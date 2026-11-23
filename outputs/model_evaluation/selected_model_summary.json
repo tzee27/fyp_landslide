@@ -1,0 +1,60 @@
+{
+  "static": {
+    "features": [
+      "elevation_m",
+      "slope_deg",
+      "aspect_sin",
+      "aspect_cos",
+      "soil_clay_surface",
+      "soil_sand_surface",
+      "soil_bdod_surface",
+      "soil_silt_surface",
+      "road_distance_m",
+      "waterway_distance_m",
+      "regional_fault_distance_m",
+      "major_fault_window_distance_m",
+      "landcover_pre_event_class",
+      "lithology_material"
+    ],
+    "algorithm": "LogisticRegression",
+    "variant": "all_environmental",
+    "cv_auc": 0.7751717789877879,
+    "heldout_auc": 0.7499276859504131,
+    "train_rows": 1308,
+    "block_km": 50,
+    "interpretation": "Case-vs-background ranking score, not calibrated occurrence probability",
+    "predictor_source": "SRTM + OpenLandMap b0; pre-event GLC; optional JMG lithology/fault proximity and OSM road/waterway distances; IMERG + ERA5-Land for temporal"
+  },
+  "temporal": {
+    "features": [
+      "elevation_m",
+      "slope_deg",
+      "aspect_sin",
+      "aspect_cos",
+      "soil_clay_surface",
+      "soil_sand_surface",
+      "soil_bdod_surface",
+      "rain_1d_mm",
+      "rain_3d_mm",
+      "rain_7d_mm",
+      "rain_14d_mm",
+      "rain_30d_mm",
+      "soil_moisture_7d_m3m3",
+      "soil_silt_surface",
+      "road_distance_m",
+      "waterway_distance_m",
+      "regional_fault_distance_m",
+      "major_fault_window_distance_m",
+      "landcover_pre_event_class",
+      "lithology_material"
+    ],
+    "algorithm": "LogisticRegression",
+    "variant": "all_environmental",
+    "cv_auc": 0.7690025592123494,
+    "heldout_auc": 0.7380775613590707,
+    "train_rows": 1287,
+    "block_km": 50,
+    "interpretation": "Case-vs-background ranking score, not calibrated occurrence probability",
+    "predictor_source": "SRTM + OpenLandMap b0; pre-event GLC; optional JMG lithology/fault proximity and OSM road/waterway distances; IMERG + ERA5-Land for temporal"
+  }
+}

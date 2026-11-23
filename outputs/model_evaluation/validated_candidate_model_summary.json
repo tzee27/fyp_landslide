@@ -1,0 +1,90 @@
+{
+  "static": {
+    "algorithm": "LogisticRegression",
+    "variant": "reduced",
+    "features": [
+      "elevation_m",
+      "slope_deg",
+      "aspect_sin",
+      "aspect_cos",
+      "soil_clay_surface",
+      "soil_sand_surface",
+      "soil_bdod_surface",
+      "road_distance_m",
+      "waterway_distance_m",
+      "landcover_pre_event_class"
+    ],
+    "numeric_features": [
+      "elevation_m",
+      "slope_deg",
+      "aspect_sin",
+      "aspect_cos",
+      "soil_clay_surface",
+      "soil_sand_surface",
+      "soil_bdod_surface",
+      "road_distance_m",
+      "waterway_distance_m"
+    ],
+    "categorical_features": [
+      "landcover_pre_event_class"
+    ],
+    "decision_threshold": 0.45,
+    "nested_outer_cv_auc": 0.7738931144783435,
+    "nested_outer_cv_pr_auc": 0.624025587712186,
+    "final_training_cv_auc": 0.7639696384555018,
+    "training_rows": 1308,
+    "selected_without_heldout": true,
+    "interpretation": "Relative case-versus-background classifier score; NOT occurrence probability"
+  },
+  "temporal": {
+    "algorithm": "LogisticRegression",
+    "variant": "without_geology",
+    "features": [
+      "elevation_m",
+      "slope_deg",
+      "aspect_sin",
+      "aspect_cos",
+      "soil_clay_surface",
+      "soil_sand_surface",
+      "soil_bdod_surface",
+      "rain_1d_mm",
+      "rain_3d_mm",
+      "rain_7d_mm",
+      "rain_14d_mm",
+      "rain_30d_mm",
+      "soil_moisture_7d_m3m3",
+      "soil_silt_surface",
+      "road_distance_m",
+      "waterway_distance_m",
+      "landcover_pre_event_class"
+    ],
+    "numeric_features": [
+      "elevation_m",
+      "slope_deg",
+      "aspect_sin",
+      "aspect_cos",
+      "soil_clay_surface",
+      "soil_sand_surface",
+      "soil_bdod_surface",
+      "rain_1d_mm",
+      "rain_3d_mm",
+      "rain_7d_mm",
+      "rain_14d_mm",
+      "rain_30d_mm",
+      "soil_moisture_7d_m3m3",
+      "soil_silt_surface",
+      "road_distance_m",
+      "waterway_distance_m"
+    ],
+    "categorical_features": [
+      "landcover_pre_event_class"
+    ],
+    "decision_threshold": 0.475,
+    "nested_outer_cv_auc": 0.774724110388446,
+    "nested_outer_cv_pr_auc": 0.6305408759594208,
+    "final_training_cv_auc": 0.7743980960764176,
+    "training_rows": 1287,
+    "selected_without_heldout": true,
+    "interpretation": "Relative case-versus-background classifier score; NOT occurrence probability"
+  }
+}

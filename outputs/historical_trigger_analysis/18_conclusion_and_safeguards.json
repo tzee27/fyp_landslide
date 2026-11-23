@@ -1,0 +1,11 @@
+{
+  "processed_event_candidates": 713,
+  "trigger_reported_n": 0,
+  "multi_trigger_n": 0,
+  "unknown_trigger_n": 713,
+  "unmatched_raw_source_rows": 715,
+  "temporal_provenance_confirmed": false,
+  "suitable_for_automatic_trigger_classifier": "NOT_ESTABLISHED",
+  "recommended_model_action": "NO RETRAINING FROM THIS NOTEBOOK; investigate trigger completeness and time provenance first",
+  "validation_warning": "Previously inspected 5-km spatial folds support exploratory comparisons only; frozen historical holdout untouched"
+}
