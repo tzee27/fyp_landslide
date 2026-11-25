@@ -281,12 +281,14 @@ export default function TerrainMap({
 function recordGeo(records: Incident[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: records
-      .filter((i) => i.kind !== "news-lead")
-      .map((i) => ({
+    features: records.flatMap((i): GeoJSON.Feature[] => {
+      const coordinates = i.coordinates ?? i.locator;
+      if (!coordinates || i.kind === "news-lead") return [];
+      return [{
         type: "Feature",
         properties: { id: i.id, precision: i.coordinates ? "point" : "area" },
-        geometry: { type: "Point", coordinates: i.coordinates ?? i.locator },
-      })),
+        geometry: { type: "Point", coordinates },
+      }];
+    }),
   };
 }

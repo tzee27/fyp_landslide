@@ -311,6 +311,42 @@ a:hover {
 .report-row time {
   font-size: 0.875rem;
 }
+.overview-news-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 1.25rem;
+}
+.overview-news-card {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+}
+.overview-news-card a {
+  display: block;
+}
+.overview-news-image {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--raised);
+  color: var(--forest);
+}
+.overview-news-image img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.overview-news-byline {
+  color: var(--forest);
+  font-size: 0.82rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.overview-news-card h3 svg {
+  vertical-align: middle;
+}
 .terrain-feature {
   background: #edf0e5;
   border: 0;
@@ -1227,3 +1263,28 @@ main {
 .earth-exploration { position: absolute; inset: 0; display: none; width: 100%; height: 100%; pointer-events: none; }
 .atlas-earth { cursor: grab; user-select: none; }
 .atlas-earth:active { cursor: grabbing; }
+.filterbar button[aria-pressed="true"] {
+  font-weight: 700;
+  border-color: currentColor;
+}
+
+.incident-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin-top: 1.5rem;
+}
+
+.incident-review textarea {
+  width: 100%;
+  min-height: 5rem;
+  font: inherit;
+}
+
+.incident-review input[type="checkbox"] {
+  width: auto;
+}
+
+.incident-review .review-confirmation {
+  flex-direction: row;
+  align-items: baseline;
+}

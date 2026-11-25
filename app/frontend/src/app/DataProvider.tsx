@@ -7,6 +7,7 @@ import {
 } from "react";
 import { loadDashboard, isDemo } from "../services/api";
 import type { DashboardPayload } from "../types";
+const refreshIntervalMs = 60_000;
 const Context = createContext<{
   data: DashboardPayload | null;
   loading: boolean;
@@ -20,20 +21,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    loadDashboard(controller.signal)
-      .then(setData)
-      .catch((e) => {
-        if (e.name !== "AbortError") {
-          setData(null);
-          setError(e.message);
+    let timer: number | undefined;
+    async function update() {
+      setLoading(true);
+      try {
+        const payload = await loadDashboard(controller.signal);
+        if (!controller.signal.aborted) {
+          setData(payload);
+          setError("");
         }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setError(error instanceof Error ? error.message : "Dashboard refresh failed.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          if (!isDemo) timer = window.setTimeout(update, refreshIntervalMs);
+        }
+      }
+    }
+    void update();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
   }, [revision]);
   return (
     <Context.Provider

@@ -160,8 +160,9 @@ export const incidents: Incident[] = [
 export const kindLabels = {
   "reported-area": "Reported area",
   "verified-point": "Verified point · demo",
-  historical: "Historical fixture",
+  historical: "Historical record",
   "news-lead": "Unverified lead",
+  "new-inventory": "New inventory",
 };
 export const layers: EnvironmentalLayer[] = [
   {

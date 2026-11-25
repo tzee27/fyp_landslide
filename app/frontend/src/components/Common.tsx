@@ -38,7 +38,14 @@ export function DemoNote({ children }: { children?: ReactNode }) {
   );
 }
 export function DataGate({ children }: { children: ReactNode }) {
-  const { loading, error, refresh } = useData();
+  const { data, loading, error, refresh } = useData();
+  if (data)
+    return (
+      <>
+        {error && <p className="demo-note" role="status">Refresh failed. Showing the last loaded data.</p>}
+        {children}
+      </>
+    );
   if (loading)
     return (
       <div className="skeleton" role="status">

@@ -1,13 +1,12 @@
 import type { DashboardPayload, Prediction } from "../types";
 import { incidents, sources } from "../mocks/data";
-const base = import.meta.env.VITE_API_BASE_URL?.replace(/[/]$/, "");
-export const isDemo = import.meta.env.VITE_DATA_MODE !== "api";
+const base = import.meta.env.VITE_API_BASE_URL?.replace(/[/]$/, "") ?? "";
+export const isDemo = import.meta.env.VITE_DATA_MODE === "demo";
 export async function apiGet<T>(
   route: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  if (!base) throw new Error("API base URL is not configured.");
-  const response = await fetch(base + route, { signal });
+  const response = await fetch(base + route, { signal, cache: "no-store" });
   if (!response.ok)
     throw new Error("API request failed (" + response.status + ").");
   return response.json();
@@ -24,22 +23,17 @@ export async function loadDashboard(
 export async function inspectLocation(
   coordinates: [number, number],
 ): Promise<Prediction> {
-  if (isDemo)
-    return {
-      coordinates,
-      score: null,
-      category: null,
-      timestamp: null,
-      demo: true,
-    };
-  return apiGet<Prediction>(
-    "/api/predictions?lng=" + coordinates[0] + "&lat=" + coordinates[1],
-  );
+  return { coordinates, score: null, category: null, timestamp: null, demo: isDemo };
 }
-// Raw collector routes are deliberately separate from processed dashboard contracts.
-export const collector = {
-  health: () => apiGet<unknown>("/health"),
-  reports: () => apiGet<unknown>("/api/reports"),
-  overlaps: () => apiGet<unknown>("/api/overlaps"),
-  runs: () => apiGet<unknown>("/api/runs"),
-};
+
+export async function approveIncident(id: string, fields: Record<string, unknown>) {
+  const response = await fetch(base + "/api/incident-updates/" + encodeURIComponent(id) + "/review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => null);
+    throw new Error(typeof result?.detail === "string" ? result.detail : "Review could not be saved. Check the required fields.");
+  }
+}

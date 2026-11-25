@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
-import { useData } from "../app/DataProvider";
+import { isDemo, useData } from "../app/DataProvider";
 import { PageHeader, DemoNote, DataGate } from "../components/Common";
 const steps = [
   "Collect historical occurrence records",
@@ -19,13 +19,13 @@ export default function Methodology() {
   const [query, setQuery] = useState("");
   const records = data?.incidents ?? [];
   const quality = [
-    ["Sample records", records.length],
+    [isDemo ? "Sample records" : "Historical candidates", records.length],
     [
-      "With sample occurrence dates",
+      "With inventory dates",
       records.filter((i) => i.occurredAt).length,
     ],
     [
-      "With synthetic point coordinates",
+      isDemo ? "With synthetic point coordinates" : "With displayable candidate coordinates",
       records.filter((i) => i.coordinates).length,
     ],
     [
@@ -33,14 +33,8 @@ export default function Methodology() {
       records.filter((i) => i.kind === "reported-area").length,
     ],
     [
-      "Real approved observations",
-      records.filter(
-        (i) =>
-          !i.demo &&
-          i.kind === "verified-point" &&
-          i.coordinates &&
-          i.occurredAt,
-      ).length,
+      "Flagged as verified unique events",
+      records.filter((i) => i.inventory?.verifiedUniqueEvent).length,
     ],
   ];
   return (
@@ -51,9 +45,9 @@ export default function Methodology() {
         description="The provenance, process and limitations behind the perspective."
       />
       <DemoNote>
-        Source links are catalogue references, not evidence of an active
-        integration. All inventory counts below are computed from the loaded
-        fixtures.
+        {isDemo
+          ? "Inventory counts use demonstration fixtures."
+          : "Inventory counts use the curated historical candidate CSV."}
       </DemoNote>
       <DataGate>
         <section className="quality-grid">
@@ -106,14 +100,14 @@ export default function Methodology() {
                       </td>
                       <td>{s.updatedAt ?? "Not available"}</td>
                       <td>
-                        <a
+                        {s.url && <a
                           href={s.url}
                           target="_blank"
                           rel="noreferrer"
                           aria-label={"Visit " + s.name}
                         >
                           <ArrowUpRight size={17} />
-                        </a>
+                        </a>}
                       </td>
                     </tr>
                   ))}
@@ -124,6 +118,45 @@ export default function Methodology() {
             (s.name + s.purpose).toLowerCase().includes(query.toLowerCase()),
           ) && <p className="empty">No datasets match this search.</p>}
         </section>
+        {!isDemo && (
+          <section className="table-section">
+            <div className="section-title">
+              <div>
+                <span className="eyebrow">RESEARCH CROSS-VALIDATION</span>
+                <h2>Selected Linear SVM</h2>
+              </div>
+            </div>
+            <p>
+              Full-feature balanced model. These are means across held-out geographic
+              folds using a 5 km training buffer and a decision threshold of 0.0.
+              Location predictions are unavailable.
+            </p>
+            {data?.modelEvaluation ? (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Branch</th><th scope="col">Folds</th>
+                      <th scope="col">ROC AUC</th><th scope="col">PR AUC</th>
+                      <th scope="col">Precision</th><th scope="col">Recall</th>
+                      <th scope="col">F1</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.modelEvaluation.map((row) => (
+                      <tr key={row.branch}>
+                        <th scope="row">{row.branch === "static" ? "Static" : "Temporal"}</th>
+                        <td>{row.folds}</td><td>{row.rocAuc.toFixed(3)}</td>
+                        <td>{row.prAuc.toFixed(3)}</td><td>{row.precision.toFixed(3)}</td>
+                        <td>{row.recall.toFixed(3)}</td><td>{row.f1.toFixed(3)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="muted">Evaluation summary unavailable.</p>}
+          </section>
+        )}
         <div className="two-columns">
           <section className="pipeline">
             <span className="eyebrow">FROM INVENTORY TO INSIGHT</span>

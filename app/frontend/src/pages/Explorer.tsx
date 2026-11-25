@@ -10,12 +10,12 @@ import {
 import TerrainMap, { type Selection } from "../components/TerrainMap";
 import { PageHeader, DemoNote, DataGate } from "../components/Common";
 import { places, layers, categoryScale, kindLabels } from "../mocks/data";
-import { useData } from "../app/DataProvider";
+import { isDemo, useData } from "../app/DataProvider";
 export default function Explorer() {
   const { data } = useData();
   const [basemap, setBasemap] = useState("Light"),
     [opacity, setOpacity] = useState(0.65),
-    [zones, setZones] = useState(true),
+    [zones, setZones] = useState(isDemo),
     [records, setRecords] = useState(true),
     [panel, setPanel] = useState(true),
     [place, setPlace] = useState(places[0]),
@@ -30,8 +30,9 @@ export default function Explorer() {
         description="A spatial perspective on Malaysia’s terrain. Explore, inspect and question."
       />
       <DemoNote>
-        Coloured rectangles are synthetic demonstration patches, not a
-        prediction surface. Hollow circles indicate approximate area locators.
+        {isDemo
+          ? "Coloured rectangles show synthetic demonstration patches. Hollow circles indicate approximate area locators."
+          : "Points show historical inventory candidates. Model-generated susceptibility is unavailable."}
       </DemoNote>
       <DataGate>
         <div className="map-toolbar">
@@ -115,14 +116,16 @@ export default function Explorer() {
                 <input
                   type="checkbox"
                   checked={zones}
+                  disabled={!isDemo}
                   onChange={(e) => setZones(e.target.checked)}
                 />
-                Demo susceptibility
+                Synthetic patches
               </label>
               <label className="range-label">
                 Opacity <span>{Math.round(opacity * 100)}%</span>
                 <input
                   aria-label="Susceptibility opacity"
+                  disabled={!isDemo}
                   type="range"
                   min="0"
                   max="1"
@@ -137,7 +140,7 @@ export default function Explorer() {
                   checked={records}
                   onChange={(e) => setRecords(e.target.checked)}
                 />
-                Demonstration records
+                {isDemo ? "Demonstration records" : "Historical candidate points"}
               </label>
               {groups
                 .filter((g) => g !== "Model output")
@@ -196,7 +199,7 @@ export default function Explorer() {
               ) : (
                 <>
                   <div className="inspection-result">
-                    <span>Demo susceptibility</span>
+                    <span>{isDemo ? "Synthetic susceptibility" : "Model susceptibility"}</span>
                     <strong>{selection.category ?? "Not available"}</strong>
                     <small>
                       {selection.category
@@ -231,7 +234,7 @@ export default function Explorer() {
           )}
           <div className="map-legend">
             <span className="eyebrow">
-              {zones ? "SYNTHETIC SUSCEPTIBILITY" : "SUSCEPTIBILITY HIDDEN"}
+              {zones ? "SYNTHETIC SUSCEPTIBILITY" : isDemo ? "SYNTHETIC PATCHES HIDDEN" : "SUSCEPTIBILITY UNAVAILABLE"}
             </span>
             {zones && (
               <div className="legend-scale">
@@ -244,8 +247,8 @@ export default function Explorer() {
               </div>
             )}
             <div className="record-legend">
-              <span>● Sample point</span>
-              <span>◯ Approximate area</span>
+              <span>● {isDemo ? "Sample point" : "Candidate point"}</span>
+              {isDemo && <span>◯ Approximate area</span>}
               <span>◉ Record cluster</span>
             </div>
           </div>
@@ -255,7 +258,7 @@ export default function Explorer() {
             Country outlines: Natural Earth · basemap attribution on map
           </span>
           <span>
-            Observation period: demo fixture · temporal comparison unavailable
+            {isDemo ? "Demonstration fixtures" : "Curated historical inventory"} · temporal comparison unavailable
           </span>
         </div>
       </DataGate>

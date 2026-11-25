@@ -1,38 +1,36 @@
 # CERUN — Malaysia Terrain Intelligence
 
-A local frontend prototype for the APU final-year project: Developing a Semi-Dynamic Landslide Susceptibility Decision-Support Dashboard Using Machine Learning for Malaysia.
+A local dashboard for the APU final-year project on semi-dynamic landslide susceptibility in Malaysia.
 
 ## Run locally
 
-Open this folder in VS Code or Antigravity, then run:
+Start FastAPI first and follow the Windows and Chrome commands in [the implementation changelog](../IMPLEMENTATION_CHANGELOG.md#run-in-google-chrome). With FastAPI listening on port 8000, run these commands from this folder:
 
 ```sh
-npm install
-npm run dev
+npm.cmd ci
+npm.cmd run dev
 ```
 
-Use the localhost URL printed by Vite. Production check: `npm run build`. Preview the production build: `npm run preview`.
+Use the localhost URL printed by Vite. Run `npm.cmd run build` to check the production build and `npm.cmd run preview` to preview it with the same backend.
 
 ## Implemented
 
 - Five lazy-loaded React Router pages, responsive navigation and a light paper/watercolour design.
 - Canvas Earth with Natural Earth geography, pointer rotation, control-scroll zoom, pause and Malaysia focus. Canvas avoids a heavyweight 3D dependency; reduced-motion disables automatic rotation.
-- MapLibre map with online dark/light, satellite and topographic basemaps, Malaysia outline, six explicitly synthetic susceptibility patches, opacity controls, record visibility, clustering, location search and click inspection.
+- MapLibre map with online dark/light, satellite and topographic basemaps, Malaysia outline, record visibility, clustering, location search and click inspection. Explicit demo mode enables synthetic patches and opacity controls.
 - Map notices for unavailable tiles/WebGL. Curated location search works without a geocoding API. Generalised boundaries are not cadastral data.
 - Interactive synthetic rainfall, moisture and factor charts; incident search/state/type/date filters; grouped evidence and precision labels; honest labels for unavailable scientific data.
-- Source catalogue, computed fixture quality counts, methodology, loading/error/empty states, reduced-motion support and keyboard focus styles.
+- Source catalogue, computed inventory quality counts, methodology, loading/error/empty states, reduced-motion support and keyboard focus styles.
 
 ## Data honesty and limitations
 
-All five incident records are demo fixtures. The Seri Nilam scenario is based on the supplied brief, with unverified article URLs and event coordinates intentionally absent. The ADINet and COOLR examples are format demonstrations, not fetched source records. No fixture is eligible for real training. Area circles are approximate locality locators, not exact events or administrative boundaries. The sample rectangles are synthetic testing patches, not a Malaysian susceptibility raster.
+Overview and Incidents show curated historical candidate records. Explorer maps candidate points that passed the preliminary display checks. Demo mode has five synthetic incident fixtures and uses approximate locality circles for area fixtures.
 
-Environmental raster layers, predictor extraction, trained model metrics, SHAP, temporal comparisons, automated collection, event verification and genuine dataset ingestion await the backend. Disabled layer controls are intentional. The date filter affects dynamic chart fixtures; static factor distributions are explicitly not date-dependent. No actual live feed is claimed.
+Environmental raster layers, predictor extraction, model inference, temporal comparisons, automated collection and event verification are future work. Analytics uses labeled synthetic chart fixtures.
 
 ## Integration
 
-Copy .env.example to .env.local. VITE_DATA_MODE defaults to demo. VITE_API_BASE_URL is a public backend URL, never a secret. Only select api mode after the backend implements GET /api/dashboard returning the DashboardPayload interface in src/types/index.ts. The app validates the top-level arrays and surfaces errors; production integration should add full schema validation and authentication as needed.
-
-src/services/api.ts separates raw collector helpers (/health, /api/reports, /api/overlaps, /api/runs) from the proposed processed dashboard contract. The raw collector is NOT assumed to supply the dashboard schema. A future prediction adapter is scaffolded but the map does not request production predictions yet. Add layer metadata/raster sources and environmental time series adapters when their contracts are settled.
+API mode is the default. The Vite proxy forwards `/api/dashboard` and `/health` to FastAPI. For synthetic fixtures, set `VITE_DATA_MODE=demo` in `.env.local`. An optional `VITE_API_BASE_URL` is public configuration. A different origin requires a reverse proxy or explicit CORS configuration.
 
 Mocks and configurable category thresholds are in src/mocks/data.ts. UI types are in src/types. Each page has its own module; shared map, globe and status components live in src/components. CSS variables centralise the visual theme. Plain CSS is used instead of Tailwind to keep this prototype's dependency and configuration footprint smaller. Recharts and MapLibre are route-lazy-loaded.
 
@@ -42,7 +40,7 @@ Country geography: Natural Earth via world-atlas (public domain geometry, world-
 
 ## Scope
 
-Local-only frontend. No publishing, backend changes or modifications to inventory/Cloudflare test workspaces were performed.
+Local React and FastAPI application. The Cloudflare collector is a later integration.
 
 
 ## Validation
@@ -55,4 +53,4 @@ The overview uses live Canvas mountain washes, layered pigment blooms responding
 
 Overview, Explorer, Analytics, Incidents and Methodology remain available. Model Insights navigation and its route were removed. Its former component and pre-redesign files are archived in `.backups/before-watercolour`; ML types and the future prediction adapter remain in the source. Explorer defaults to the light basemap. Map classifications and fixture values are unchanged.
 
-Run `npm test` for the six Canvas interaction/lifecycle checks. No additional runtime dependencies were introduced for the redesign.
+Run `npm.cmd test` for the six Canvas interaction checks. Run `npm.cmd run test:integration` with FastAPI listening on port 8000 to test the live frontend service and proxy.

@@ -1,34 +1,48 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
-import { useData } from "../app/DataProvider";
+import { isDemo, useData } from "../app/DataProvider";
 import { PageHeader, DemoNote, DataGate } from "../components/Common";
 import { kindLabels } from "../mocks/data";
 import TerrainMap from "../components/TerrainMap";
+import IncidentReview from "../components/IncidentReview";
+import { occurrenceNewestFirst } from "../services/incidentDates";
 export default function Incidents() {
   const { data, refresh, loading } = useData();
   const [params, setParams] = useSearchParams();
+  const reviewing = !isDemo && params.get("tab") === "updates";
   const [state, setState] = useState("All states"),
     [kind, setKind] = useState("All record types"),
     [search, setSearch] = useState(""),
     [from, setFrom] = useState(""),
     [to, setTo] = useState("");
-  const all = data?.incidents ?? [];
+  const all = useMemo(
+    () => [...((reviewing ? data?.pendingUpdates : data?.incidents) ?? [])].sort(occurrenceNewestFirst),
+    [data, reviewing],
+  );
+  function showSection(updates: boolean, id?: string) {
+    setState("All states");
+    setKind("All record types");
+    setSearch("");
+    setFrom("");
+    setTo("");
+    setParams({ ...(updates ? { tab: "updates" } : {}), ...(id ? { id } : {}) });
+  }
+  const kinds = [...new Set(all.map((i) => i.kind))];
   const filtered = all.filter(
-    (i) =>
-      (state === "All states" || i.state === state) &&
-      (kind === "All record types" || i.kind === kind) &&
-      (!from || i.reportedAt >= from) &&
-      (!to || i.reportedAt <= to) &&
-      (
-        i.title +
-        " " +
-        i.district +
-        " " +
-        i.evidence.map((e) => e.publisher).join(" ")
-      )
-        .toLowerCase()
-        .includes(search.toLowerCase()),
+    (i) => {
+      const date = i.occurredAt ?? i.reportedAt ?? "";
+      return (
+        (state === "All states" || i.state === state) &&
+        (kind === "All record types" || i.kind === kind) &&
+        (!from || date >= from) &&
+        (!to || (date !== "" && date <= to)) &&
+        [i.title, i.district, i.inventory?.source, ...i.evidence.map((e) => e.publisher)]
+          .join(" ")
+          .toLowerCase()
+          .includes(search.toLowerCase())
+      );
+    },
   );
   const selected =
     filtered.find((i) => i.id === params.get("id")) ?? filtered[0];
@@ -43,22 +57,31 @@ export default function Incidents() {
           <RefreshCw size={14} /> Reload data
         </button>
       </PageHeader>
+      {!isDemo && <nav className="filterbar" aria-label="Incident Monitor sections">
+        <button type="button" aria-pressed={!reviewing} onClick={() => showSection(false)}>Report Notebook</button>
+        <button type="button" aria-pressed={reviewing} onClick={() => showSection(true)}>
+          Updates to review ({data?.pendingUpdates?.length ?? 0})
+        </button>
+      </nav>}
       <DemoNote>
-        Demonstration notebook. The collector is not connected; sample records
-        are not confirmed new landslides.
+        {isDemo
+          ? "Demonstration notebook with synthetic records."
+          : reviewing
+            ? "Sourced landslide leads awaiting occurrence, location and duplicate review."
+            : "Historical inventory and reviewed additions. New inventory records are excluded from model training."}
       </DemoNote>
       <div className="collector-strip">
         <span>
           Collector <b>Not configured</b>
         </span>
         <span>
-          Last run <b>Not available</b>
+          {reviewing ? "Latest reported occurrence" : "Latest occurrence date"} <b>{all[0]?.occurredAt ?? "Not available"}</b>
         </span>
         <span>
-          Duplicate screening <b>Awaiting backend</b>
+          Duplicate screening <b>{isDemo ? "Demo" : "Curated review status"}</b>
         </span>
         <span>
-          Demo records <b>{all.length}</b>
+          {isDemo ? "Demo records" : reviewing ? "Pending updates" : "Notebook records"} <b>{all.length}</b>
         </span>
       </div>
       <div className="filterbar incident-filters">
@@ -83,15 +106,15 @@ export default function Incidents() {
           Record type
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option>All record types</option>
-            {Object.entries(kindLabels).map(([key, label]) => (
+            {kinds.map((key) => (
               <option value={key} key={key}>
-                {label}
+                {kindLabels[key]}
               </option>
             ))}
           </select>
         </label>
         <label>
-          Reported from
+          Record date from
           <input
             type="date"
             value={from}
@@ -99,7 +122,7 @@ export default function Incidents() {
           />
         </label>
         <label>
-          Reported to
+          Record date to
           <input
             type="date"
             value={to}
@@ -111,8 +134,8 @@ export default function Incidents() {
         <div className="incidents-grid">
           <section className="incident-list">
             <div className="list-heading">
-              <span className="eyebrow">REPORT NOTEBOOK</span>
-              <span>{filtered.length} records</span>
+              <span className="eyebrow">{reviewing ? "UPDATES TO REVIEW" : "REPORT NOTEBOOK"}</span>
+              <span>{filtered.length} records · Newest occurrence first</span>
             </div>
             {filtered.length === 0 ? (
               <div className="empty">
@@ -136,13 +159,13 @@ export default function Incidents() {
                   className={
                     "incident-item " + (selected?.id === i.id ? "selected" : "")
                   }
-                  onClick={() => setParams({ id: i.id })}
+                  onClick={() => setParams({ ...(reviewing ? { tab: "updates" } : {}), id: i.id })}
                   key={i.id}
                 >
                   <div className="incident-item-meta">
                     <span className={"record-symbol " + i.kind} />
                     <span>{kindLabels[i.kind]}</span>
-                    <time>{i.reportedAt}</time>
+                    <time>{i.occurredAt ?? i.reportedAt ?? "Date unavailable"}</time>
                   </div>
                   <h3>{i.title}</h3>
                   <p>
@@ -150,7 +173,7 @@ export default function Incidents() {
                   </p>
                   <small>
                     {i.evidence.length} evidence references{" "}
-                    <span>Demo record</span>
+                    <span>{i.inventory?.source ?? i.evidence[0]?.publisher ?? "Demo record"}</span>
                   </small>
                 </button>
               ))
@@ -164,10 +187,10 @@ export default function Incidents() {
               <h2>{selected.title}</h2>
               <div className="tag-row">
                 <span className="tag">{kindLabels[selected.kind]}</span>
-                <span className="tag sand">Demonstration</span>
+                {selected.demo && <span className="tag sand">Demonstration</span>}
               </div>
               <p>{selected.description}</p>
-              <TerrainMap
+              {selected.locator && <TerrainMap
                 key={selected.id}
                 compact
                 incidents={[selected]}
@@ -176,23 +199,27 @@ export default function Incidents() {
                   center: selected.locator,
                   zoom: selected.coordinates ? 9 : 8,
                 }}
-              />
+              />}
               <p className="microcopy">
-                {selected.coordinates
-                  ? "Solid marker: synthetic point fixture."
-                  : "Hollow circle: approximate locality locator, not an event coordinate or an administrative boundary."}
+                {selected.demo
+                  ? "Demonstration marker. Area locators are approximate."
+                  : selected.coordinates
+                    ? selected.kind === "new-inventory" ? "Reviewer-supplied location." : "Candidate coordinate from the curated inventory."
+                    : "A displayable candidate point is unavailable."}
               </p>
               <dl className="details-list">
                 <div>
                   <dt>Reported date</dt>
-                  <dd>{selected.reportedAt}</dd>
+                  <dd>{selected.reportedAt ?? "Not available"}</dd>
                 </div>
                 <div>
-                  <dt>Verified occurrence date</dt>
+                  <dt>{reviewing ? "Occurrence date as reported" : "Occurrence date"}</dt>
                   <dd>
                     {selected.occurredAt
-                      ? selected.occurredAt + " · synthetic"
-                      : "Not available"}
+                      ? selected.occurredAt + (selected.inventory ? " · " + selected.inventory.datePrecision : "")
+                      : selected.inventory?.originalDateValue
+                        ? selected.inventory.originalDateValue + " · " + selected.inventory.datePrecision
+                        : "Not available"}
                   </dd>
                 </div>
                 <div>
@@ -200,11 +227,11 @@ export default function Incidents() {
                   <dd>{selected.precision}</dd>
                 </div>
                 <div>
-                  <dt>Event coordinates</dt>
+                  <dt>Candidate coordinates</dt>
                   <dd>
                     {selected.coordinates
-                      ? selected.coordinates.join(", ") + " · synthetic"
-                      : "Not verified"}
+                      ? selected.coordinates.join(", ")
+                      : "Not available"}
                   </dd>
                 </div>
                 <div>
@@ -216,9 +243,15 @@ export default function Incidents() {
                   <dd>Not connected</dd>
                 </div>
                 <div>
-                  <dt>ML training eligibility</dt>
-                  <dd>Excluded · demonstration data</dd>
+                  <dt>Research model-use status</dt>
+                  <dd>{selected.inventory?.modelUseStatus.replaceAll("_", " ") ?? (selected.demo ? "Demonstration data" : "Excluded from model training")}</dd>
                 </div>
+                {selected.inventory && <>
+                  <div><dt>Source record</dt><dd>{selected.inventory.sourceRecordId}</dd></div>
+                  <div><dt>Curation status</dt><dd>{selected.inventory.curationStatus.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Coordinate status</dt><dd>{selected.inventory.coordinateStatus.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Verified unique event</dt><dd>{selected.inventory.verifiedUniqueEvent ? "Yes" : "No"}</dd></div>
+                </>}
               </dl>
               <h3 className="evidence-heading">Evidence & related coverage</h3>
               {selected.evidence.length ? (
@@ -240,9 +273,14 @@ export default function Incidents() {
                 ))
               ) : (
                 <p className="muted">
-                  No evidence attached to this synthetic fixture.
+                  No article references are attached to this record.
                 </p>
               )}
+              {selected.reviewNotes && <p><strong>Review notes</strong> {selected.reviewNotes}</p>}
+              {reviewing && <IncidentReview key={selected.id} record={selected} onApproved={() => {
+                refresh();
+                showSection(false, selected.id);
+              }} />}
             </article>
           )}
         </div>
