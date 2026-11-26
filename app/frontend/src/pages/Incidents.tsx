@@ -72,7 +72,9 @@ export default function Incidents() {
       </DemoNote>
       <div className="collector-strip">
         <span>
-          Collector <b>Not configured</b>
+          Last collection attempt <b>{data?.collectionUpdatedAt
+            ? new Date(data.collectionUpdatedAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })
+            : "Not available"}</b>
         </span>
         <span>
           {reviewing ? "Latest reported occurrence" : "Latest occurrence date"} <b>{all[0]?.occurredAt ?? "Not available"}</b>
@@ -188,8 +190,22 @@ export default function Incidents() {
               <div className="tag-row">
                 <span className="tag">{kindLabels[selected.kind]}</span>
                 {selected.demo && <span className="tag sand">Demonstration</span>}
+                {reviewing && selected.verificationStatus && (
+                  <span className="tag sand">{selected.verificationStatus === "VERIFIED"
+                    ? "Two-source match · awaiting inventory review"
+                    : selected.verificationStatus === "PARTIALLY_VERIFIED" ? "Partially verified" : "Pending review"}</span>
+                )}
               </div>
               <p>{selected.description}</p>
+              {selected.sourceImage && (
+                <figure className="incident-source-image" key={selected.sourceImage.url}>
+                  <a href={selected.sourceImage.articleUrl} target="_blank" rel="noreferrer">
+                    <img src={selected.sourceImage.url} alt={selected.sourceImage.credit}
+                      onError={(event) => { const figure = event.currentTarget.closest("figure"); if (figure) figure.hidden = true; }} />
+                  </a>
+                  <figcaption>{selected.sourceImage.credit}</figcaption>
+                </figure>
+              )}
               {selected.locator && <TerrainMap
                 key={selected.id}
                 compact

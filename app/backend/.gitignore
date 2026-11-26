@@ -1,3 +1,7 @@
 .venv-cache/
 .venv-python/
 incident_reviews.sqlite3*
+collector_data/
+pilot_data/
+model_data/
+national_data/

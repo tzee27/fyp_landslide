@@ -1283,14 +1283,10 @@ tr:last-child td {
   font-size: 0.875rem;
 }
 .map-legend {
-  position: absolute;
-  left: 18px;
-  bottom: 33px;
-  z-index: 1;
+  margin-top: 12px;
   background: #fffcf7f5;
   border: 1px solid #405a4530;
   padding: 14px 16px;
-  max-width: calc(100% - 36px);
 }
 .map-legend > .eyebrow {
   font-size: 0.75rem;
@@ -1298,21 +1294,29 @@ tr:last-child td {
 }
 .legend-scale {
   display: flex;
+  flex-wrap: wrap;
   margin: 10px 0;
-  gap: 3px;
+  gap: 6px 18px;
 }
 .legend-scale > div {
-  width: 65px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.8125rem;
   color: #3b5547;
 }
 .legend-scale > div > span {
-  display: block;
+  width: 18px;
   height: 4px;
-  margin-bottom: 7px;
+}
+.legend-summary {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 0.875rem;
 }
 .record-legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   font-size: 0.8125rem;
   color: #466256;
@@ -1910,13 +1914,9 @@ tr:last-child td {
     z-index: 3;
   }
   .map-legend {
-    left: 10px;
-    bottom: 33px;
     padding: 12px;
-    max-width: calc(100% - 20px);
   }
   .legend-scale > div {
-    width: 50px;
     font-size: 0.75rem;
   }
   .record-legend {

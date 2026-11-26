@@ -4,14 +4,14 @@ A local dashboard for the APU final-year project on semi-dynamic landslide susce
 
 ## Run locally
 
-Start FastAPI first and follow the Windows and Chrome commands in [the implementation changelog](../IMPLEMENTATION_CHANGELOG.md#run-in-google-chrome). With FastAPI listening on port 8000, run these commands from this folder:
+Set up the backend virtual environment once using the [Windows setup commands](../IMPLEMENTATION_CHANGELOG.md#run-in-google-chrome). Then run these commands from this folder:
 
 ```sh
 npm.cmd ci
 npm.cmd run dev
 ```
 
-Use the localhost URL printed by Vite. Run `npm.cmd run build` to check the production build and `npm.cmd run preview` to preview it with the same backend.
+`npm.cmd run dev` starts FastAPI if needed and waits for a valid dashboard response on port 8000 before starting Vite. Keep that PowerShell window open while using the dashboard. Run `npm.cmd run dev:frontend` only when FastAPI is already running separately. The occurrence collector runs in its own PowerShell window. A production preview uses `npm.cmd run build` followed by `npm.cmd run preview` with FastAPI already running.
 
 ## Implemented
 

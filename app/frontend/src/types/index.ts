@@ -24,6 +24,8 @@ export interface Incident {
   evidence: Evidence[];
   demo: boolean;
   reviewNotes?: string;
+  sourceImage?: { url: string; credit: string; articleUrl: string };
+  verificationStatus?: "VERIFIED" | "PARTIALLY_VERIFIED" | "PENDING_REVIEW";
   inventory?: {
     source: string;
     sourceRecordId: string;
@@ -75,6 +77,9 @@ export interface SeriesPoint {
 export interface DashboardPayload {
   incidents: Incident[];
   pendingUpdates?: Incident[];
+  collectionUpdatedAt?: string | null;
+  pilotGridCellCount?: number | null;
+  pilotFeatureCoverage?: { completeCells: number } | null;
   sources: SourceFreshness[];
   modelEvaluation?: {
     branch: "static" | "temporal";
@@ -85,4 +90,23 @@ export interface DashboardPayload {
     recall: number;
     f1: number;
   }[] | null;
+}
+export interface PilotCell {
+  cellId: string;
+  tileId?: string;
+  score: number | null;
+  category: "Lower" | "Higher" | null;
+  missing: string[];
+  environment: Record<string, number | string | null>;
+}
+
+export interface StaticAssessment extends GeoJSON.FeatureCollection<GeoJSON.Polygon | GeoJSON.MultiPolygon, PilotCell> {
+  assessment: {
+    assessmentDate: string;
+    model: string;
+    modelVersion: string;
+    scoredCells: number;
+    totalCells: number;
+    rule: string;
+  };
 }

@@ -1,16 +1,29 @@
 """Application review records, separate from the curated research inventory."""
 
 import json
+import logging
 import sqlite3
 from contextlib import closing
 from datetime import date
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
 
 router = APIRouter()
 DATABASE = Path(__file__).resolve().with_name("incident_reviews.sqlite3")
+COLLECTION = Path(__file__).resolve().parent / "collector_data/collection.json"
+SOURCE_IMAGES = {
+    "bernama:2637660": {
+        "url": "https://web14.bernama.com/storage/photos/3e26e9ca14c33f8aae7d2f605e63f9e66b01ae898868f",
+        "credit": "File photo · JKR Gua Musang via Bernama",
+    },
+    "bernama:2636736": {
+        "url": "https://web14.bernama.com/storage/photos/01f4bad80303bc18efa45f64b45f87bd6afecb61d89bb",
+        "credit": "Photo · JBPM via Bernama",
+    },
+}
 LEADS = {
     "lead-ft185-2026-11-21": {
         "title": "Landslide reported on FT185 Jalan Lojing–Gua Musang",
@@ -54,6 +67,55 @@ def connect():
     return connection
 
 
+def article_identity(url):
+    parsed = urlsplit(url)
+    host = parsed.hostname or ""
+    if host == "bernama.com" or host.endswith(".bernama.com"):
+        values = parse_qs(parsed.query).get("id", [])
+        if values:
+            return "bernama:" + values[0]
+    return url
+
+
+def collection_snapshot():
+    if not COLLECTION.is_file():
+        return {"events": []}
+    try:
+        return json.loads(COLLECTION.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logging.getLogger(__name__).warning("Collector snapshot could not be read.")
+        return {"events": []}
+
+
+def available_leads(snapshot):
+    leads = dict(LEADS)
+    known_urls = {article_identity(item["url"]): lead_id
+                  for lead_id, lead in leads.items() for item in lead["evidence"]}
+    for event in snapshot["events"]:
+        evidence = [
+            {"publisher": item["publisher"], "title": item["title"], "url": item["url"],
+             "classification": "Reported occurrence", "image": item.get("image")} for item in event["evidence"]
+        ]
+        matching = next((known_urls[article_identity(item["url"])] for item in evidence
+                         if article_identity(item["url"]) in known_urls), None)
+        if matching:
+            lead = leads[matching]
+            leads[matching] = {**lead, "evidence": [*lead["evidence"], *(
+                item for item in evidence if article_identity(item["url"]) not in known_urls
+            )]}
+            continue
+        leads[event["id"]] = {
+            "title": event["title"], "state": event["state"] or "Unknown state",
+            "district": event["district"] or "Unknown district",
+            "locality": event["locality"] or "Unknown locality",
+            "reportedAt": event["publication_date"], "occurredAt": event["occurrence_date"],
+            "description": event["description"], "impacts": "Road closure reported" if event["road_closure"] else "Unavailable",
+            "verificationStatus": event["verification_status"],
+            "evidence": evidence,
+        }
+    return leads
+
+
 def read_updates():
     # Avoid creating a storage file on a read-only dashboard request.
     reviews = {}
@@ -61,11 +123,17 @@ def read_updates():
         with closing(connect()) as connection:
             reviews = dict(connection.execute("SELECT id, payload FROM reviews"))
     pending, reviewed = [], []
-    for record_id, lead in LEADS.items():
+    snapshot = collection_snapshot()
+    for record_id, lead in available_leads(snapshot).items():
         record = {
             **lead, "id": record_id, "demo": False, "kind": "news-lead",
             "precision": "Reported road section", "coordinates": None, "locator": None,
         }
+        for evidence in lead["evidence"]:
+            image = SOURCE_IMAGES.get(article_identity(evidence["url"])) or evidence.get("image")
+            if image:
+                record["sourceImage"] = {**image, "articleUrl": evidence["url"]}
+                break
         if record_id not in reviews:
             pending.append(record)
             continue
@@ -80,12 +148,12 @@ def read_updates():
                 "url": str(review.location_evidence), "classification": "Review evidence",
             }],
         })
-    return pending, reviewed
+    return pending, reviewed, snapshot.get("updated_at")
 
 
 @router.post("/api/incident-updates/{record_id}/review")
 def approve_review(record_id: str, review: Review):
-    lead = LEADS.get(record_id)
+    lead = available_leads(collection_snapshot()).get(record_id)
     if lead is None:
         raise HTTPException(404, "Update report not found.")
     if (

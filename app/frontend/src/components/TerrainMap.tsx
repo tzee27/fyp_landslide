@@ -4,14 +4,18 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MapInstance } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { demoZones } from "../mocks/data";
-import type { Incident } from "../types";
+import type { Incident, StaticAssessment } from "../types";
+import { susceptibilityColors, susceptibilityLevel } from "../services/susceptibilityDisplay";
 maplibregl.setWorkerUrl(mapWorkerUrl);
 export interface Selection {
   coordinates: [number, number];
   category?: string;
   score?: number;
   incident?: Incident;
+  assessmentCellId?: string;
+  tileId?: string;
 }
+export interface MapViewport { bounds: [number, number, number, number]; zoom: number }
 interface Props {
   basemap?: string;
   opacity?: number;
@@ -21,6 +25,8 @@ interface Props {
   incidents: Incident[];
   onSelect?: (selection: Selection) => void;
   compact?: boolean;
+  assessment?: StaticAssessment | null;
+  onViewport?: (viewport: MapViewport) => void;
 }
 const tiles: Record<string, { url: string; attribution: string }> = {
   Dark: {
@@ -50,11 +56,15 @@ export default function TerrainMap({
   incidents,
   onSelect,
   compact = false,
+  assessment,
+  onViewport,
 }: Props) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<MapInstance | null>(null);
   const callback = useRef(onSelect);
   callback.current = onSelect;
+  const viewportCallback = useRef(onViewport);
+  viewportCallback.current = onViewport;
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const records = useRef(incidents);
@@ -106,12 +116,32 @@ export default function TerrainMap({
       "top-right",
     );
     m.addControl(new maplibregl.ScaleControl(), "bottom-left");
+    const reportViewport = () => {
+      const bounds = m.getBounds();
+      viewportCallback.current?.({
+        bounds: [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
+        zoom: m.getZoom(),
+      });
+    };
+    m.on("moveend", reportViewport);
     m.on("error", () =>
       setError(
         "Some map tiles could not load. Check your internet connection; local demo overlays remain available.",
       ),
     );
     m.on("load", () => {
+      m.addSource("static-assessment", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "static-assessment-fill", type: "fill", source: "static-assessment",
+        paint: {
+          "fill-color": ["match", ["get", "displayLevel"], "Lower", susceptibilityColors.Lower, "Moderate", susceptibilityColors.Moderate, "Higher", susceptibilityColors.Higher, susceptibilityColors.Unscored],
+          "fill-opacity": ["match", ["get", "displayLevel"], "Unscored", 0.14, 0.65],
+        },
+      });
+      m.addLayer({
+        id: "static-assessment-outline", type: "line", source: "static-assessment",
+        paint: { "line-color": "#64706b", "line-opacity": 0.65, "line-width": 0.8 },
+      });
       m.addSource("zones", { type: "geojson", data: demoZones });
       m.addLayer({
         id: "zones",
@@ -202,10 +232,11 @@ export default function TerrainMap({
           ),
         );
       setReady(true);
+      reportViewport();
     });
     m.on("click", (e) => {
       const features = m.queryRenderedFeatures(e.point, {
-        layers: ["points", "areas", "clusters", "zones"].filter((id) =>
+        layers: ["points", "areas", "clusters", "zones", "static-assessment-fill"].filter((id) =>
           m.getLayer(id),
         ),
       });
@@ -216,10 +247,13 @@ export default function TerrainMap({
       }
       const record = features.find((f) => f.properties.id);
       const zone = features.find((f) => f.layer.id === "zones");
+      const assessmentCell = features.find((f) => f.layer.id === "static-assessment-fill");
       callback.current?.({
         coordinates: [e.lngLat.lng, e.lngLat.lat],
         category: zone?.properties.label,
         score: zone?.properties.score,
+        assessmentCellId: assessmentCell?.properties.cellId,
+        tileId: assessmentCell?.properties.tileId,
         incident: record
           ? records.current.find((i) => i.id === record.properties.id)
           : undefined,
@@ -230,6 +264,21 @@ export default function TerrainMap({
       m.remove();
     };
   }, []);
+  useEffect(() => {
+    if (!ready || !map.current) return;
+    (map.current.getSource("static-assessment") as maplibregl.GeoJSONSource).setData(
+      {
+        type: "FeatureCollection",
+        features: assessment?.features.map((feature) => ({
+          ...feature,
+          properties: {
+            ...feature.properties,
+            displayLevel: susceptibilityLevel(feature.properties.score),
+          },
+        })) ?? [],
+      },
+    );
+  }, [assessment, ready]);
   useEffect(() => {
     const m = map.current;
     if (!ready || !m) return;
@@ -244,6 +293,9 @@ export default function TerrainMap({
       m.setLayoutProperty(id, "visibility", showZones ? "visible" : "none"),
     );
     m.setPaintProperty("zones", "fill-opacity", opacity);
+    m.setPaintProperty("static-assessment-fill", "fill-opacity", [
+      "match", ["get", "displayLevel"], "Unscored", opacity * (0.14 / 0.65), opacity,
+    ]);
     ["points", "areas", "clusters"].forEach((id) =>
       m.setLayoutProperty(id, "visibility", showRecords ? "visible" : "none"),
     );

@@ -6,9 +6,15 @@ export async function apiGet<T>(
   route: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(base + route, { signal, cache: "no-store" });
-  if (!response.ok)
-    throw new Error("API request failed (" + response.status + ").");
+  const timeout = AbortSignal.timeout(10_000);
+  const response = await fetch(base + route, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const result = await response.json().catch(() => null);
+    throw new Error(typeof result?.detail === "string" ? result.detail : "API request failed (" + response.status + ").");
+  }
   return response.json();
 }
 export async function loadDashboard(

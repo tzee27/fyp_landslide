@@ -1,14 +1,18 @@
 """Read-only dashboard API for the curated research inventory."""
 
 import csv
+import hashlib
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from model_evaluation import read_model_evaluation
 from incident_updates import read_updates, router as incident_updates_router
+from national_api import router as national_api_router
 
 app = FastAPI(title="Malaysia Landslide Dashboard")
 app.include_router(incident_updates_router)
+app.include_router(national_api_router)
 INVENTORY = (
     Path(__file__).resolve().parents[2]
     / "data/processed/inventory/event_candidates.csv"
@@ -20,6 +24,30 @@ REQUIRED_COLUMNS = {
     "coordinate_usable_for_preliminary_spatial_review", "curation_status",
     "coordinate_status", "is_verified_unique_event", "model_use_status",
 }
+PILOT_GRID = Path(__file__).resolve().with_name("pilot_data") / "static_grid.geojson"
+
+
+def pilot_cell_count():
+    try:
+        grid = json.loads(PILOT_GRID.read_text(encoding="utf-8"))
+        if grid["type"] == "FeatureCollection" and isinstance(grid["features"], list):
+            return len(grid["features"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def pilot_feature_coverage(cell_count):
+    try:
+        coverage = json.loads(PILOT_GRID.with_name("static_feature_coverage.json").read_text(encoding="utf-8"))
+        if (isinstance(cell_count, int) and coverage["cells"] == cell_count
+                and coverage["grid_sha256"] == hashlib.sha256(PILOT_GRID.read_bytes()).hexdigest()):
+            complete = coverage["complete_cells"]
+            if isinstance(complete, int) and 0 <= complete <= cell_count:
+                return {"completeCells": complete}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
 
 
 def inventory_record(row):
@@ -72,6 +100,22 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/api/static-assessment")
+def static_assessment():
+    try:
+        assessment = json.loads(PILOT_GRID.with_name("static_assessment.geojson").read_text(encoding="utf-8"))
+        metadata = assessment["assessment"]
+        for filename, field in (("static_grid.geojson", "gridSha256"), ("static_features.csv", "featureTableSha256")):
+            if hashlib.sha256(PILOT_GRID.with_name(filename).read_bytes()).hexdigest() != metadata[field]:
+                raise ValueError("Assessment inputs changed.")
+        model = PILOT_GRID.parent.parent / "model_data/static_linear_svm.joblib"
+        if hashlib.sha256(model.read_bytes()).hexdigest() != metadata["modelSha256"]:
+            raise ValueError("Assessment model changed.")
+        return assessment
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise HTTPException(404, "No current static pilot assessment is available.") from error
+
+
 @app.get("/api/dashboard")
 def dashboard():
     try:
@@ -86,10 +130,14 @@ def dashboard():
     except (OSError, UnicodeError, csv.Error, ValueError) as error:
         raise HTTPException(503, "Curated inventory is unavailable.") from error
 
-    pending_updates, new_inventory = read_updates()
+    pending_updates, new_inventory, collection_updated_at = read_updates()
+    pilot_cells = pilot_cell_count()
     return {
         "incidents": incidents + new_inventory,
         "pendingUpdates": pending_updates,
+        "collectionUpdatedAt": collection_updated_at,
+        "pilotGridCellCount": pilot_cells,
+        "pilotFeatureCoverage": pilot_feature_coverage(pilot_cells),
         "modelEvaluation": read_model_evaluation(),
         "sources": [
             {
