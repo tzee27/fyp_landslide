@@ -1,0 +1,40 @@
+{
+  "rainfall": {
+    "2026-11-18": {
+      "source": "NASA/GPM_L3/IMERG_V07",
+      "status": [
+        "provisional"
+      ],
+      "unit": "mm",
+      "maximum": 100,
+      "colors": [
+        "#dcebef",
+        "#255793"
+      ]
+    }
+  },
+  "moisture": {
+    "2026-11-18": {
+      "source": "ECMWF/ERA5_LAND/DAILY_AGGR",
+      "status": [],
+      "unit": "m\u00b3/m\u00b3",
+      "maximum": 1,
+      "colors": [
+        "#efdbc1",
+        "#34736a"
+      ]
+    }
+  },
+  "runoff": {
+    "2026-11-18": {
+      "source": "ECMWF/ERA5_LAND/DAILY_AGGR",
+      "status": [],
+      "unit": "mm",
+      "maximum": 50,
+      "colors": [
+        "#dcebf5",
+        "#325c89"
+      ]
+    }
+  }
+}

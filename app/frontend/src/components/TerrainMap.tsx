@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { demoZones } from "../mocks/data";
 import type { Incident, StaticAssessment } from "../types";
 import { susceptibilityColors, susceptibilityLevel } from "../services/susceptibilityDisplay";
+
 maplibregl.setWorkerUrl(mapWorkerUrl);
 export interface Selection {
   coordinates: [number, number];
@@ -27,6 +28,9 @@ interface Props {
   compact?: boolean;
   assessment?: StaticAssessment | null;
   onViewport?: (viewport: MapViewport) => void;
+
+  environmentalField?: string;
+  environmentalOpacity?: number;
 }
 const tiles: Record<string, { url: string; attribution: string }> = {
   Dark: {
@@ -58,6 +62,9 @@ export default function TerrainMap({
   compact = false,
   assessment,
   onViewport,
+
+  environmentalField,
+  environmentalOpacity = .85,
 }: Props) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<MapInstance | null>(null);
@@ -264,6 +271,42 @@ export default function TerrainMap({
       m.remove();
     };
   }, []);
+  useEffect(() => {
+    const m=map.current;
+    if (!ready || !m || !environmentalField) return;
+    const lineColors:Record<string,string>={roads:"#985a41",rivers:"#3e7398",faults:"#923f4d"};
+    if(environmentalField==="geology" || environmentalField in lineColors){
+      const id="environment-vector";
+      m.addSource(id,{type:"geojson",data:import.meta.env.BASE_URL+"data/"+environmentalField+".geojson"});
+      if(environmentalField==="geology"){
+        m.addLayer({id,type:"fill",source:id,paint:{"fill-color":["match",["get","class"],"Geological Lithodemic Unit","#9780aa","#d1a26d"],"fill-outline-color":"#735e55"}},"clusters");
+      }else{
+        m.addLayer({id,type:"line",source:id,paint:{"line-color":lineColors[environmentalField],"line-width":1.4}},"clusters");
+      }
+      return ()=>{
+        if(map.current?.getLayer(id)) m.removeLayer(id);
+        if(map.current?.getSource(id)) m.removeSource(id);
+      };
+    }
+    for (const [region,west,east] of [["west",99,105],["east",109,120]] as const) {
+      const id="environment-"+region;
+      m.addSource(id,{type:"image",url:import.meta.env.BASE_URL+"data/"+environmentalField+"-"+region+".png",coordinates:[[west,8],[east,8],[east,0],[west,0]]});
+      m.addLayer({id,type:"raster",source:id,paint:{"raster-resampling":/^(cover|rainfall|runoff|moisture)-/.test(environmentalField)?"nearest":"linear"}},"clusters");
+    }
+    return ()=>{
+      for (const id of ["environment-west","environment-east"]) {
+        if(map.current?.getLayer(id)) m.removeLayer(id);
+        if(map.current?.getSource(id)) m.removeSource(id);
+      }
+    };
+  },[ready,environmentalField]);
+  useEffect(()=>{
+    const vector=map.current?.getLayer("environment-vector");
+    if(vector) map.current?.setPaintProperty("environment-vector",vector.type==="fill"?"fill-opacity":"line-opacity",environmentalOpacity);
+    for (const id of ["environment-west","environment-east"]) {
+      if(map.current?.getLayer(id)) map.current.setPaintProperty(id,"raster-opacity",environmentalOpacity);
+    }
+  },[ready,environmentalOpacity,environmentalField]);
   useEffect(() => {
     if (!ready || !map.current) return;
     (map.current.getSource("static-assessment") as maplibregl.GeoJSONSource).setData(

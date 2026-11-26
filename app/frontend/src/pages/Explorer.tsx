@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  Layers,
+  Layers, Moon, Sun,
   Search,
   SlidersHorizontal,
   X,
@@ -9,15 +9,31 @@ import {
 } from "lucide-react";
 import TerrainMap, { type MapViewport, type Selection } from "../components/TerrainMap";
 import { PageHeader, DemoNote, DataGate } from "../components/Common";
-import { places, layers, categoryScale, kindLabels } from "../mocks/data";
+import { places, categoryScale, kindLabels } from "../mocks/data";
 import { isDemo, useData } from "../app/DataProvider";
 import { apiGet } from "../services/api";
 import type { StaticAssessment } from "../types";
 import { useNationalAssessment } from "../hooks/useNationalAssessment";
 import { moderateMargin, susceptibilityColors, susceptibilityLevel } from "../services/susceptibilityDisplay";
 
+import { environmentLayers } from "../services/environmentLayers";
+
+import {useMapDates} from "../hooks/useMapDates";
+import coverClasses from "../services/landCoverClasses.json";
+
 export default function Explorer() {
   const { data } = useData();
+
+  const params=new URLSearchParams(location.search);
+  const coverYears=[2007,2008,2009,2010,2011,2012,2013,2014,2022];
+  const requestedYear=Number(params.get("year"));
+  const [coverYear,setCoverYear]=useState(coverYears.includes(requestedYear)?requestedYear:2022);
+  const [referenceField, setReferenceField] = useState<string|undefined>(params.get("factor")??undefined);
+  const [mapDate,setMapDate]=useState(params.get("date")??"");
+  const mapDates=useMapDates();
+  const dynamic=referenceField ? mapDates[referenceField] : undefined;
+  const day=mapDate || Object.keys(dynamic??{}).sort().at(-1) || "";
+  const mapMeta=dynamic?.[day];
   const [national, setNational] = useState(!isDemo);
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [nationalCell, setNationalCell] = useState<StaticAssessment["features"][number] | null>(null);
@@ -29,7 +45,15 @@ export default function Explorer() {
     [place, setPlace] = useState(places[0]),
     [selection, setSelection] = useState<Selection | null>(null),
     [search, setSearch] = useState("");
-  const groups = [...new Set(layers.map((l) => l.group))];
+  const [environmentOpacity,setEnvironmentOpacity]=useState(.85);
+  const dynamicNames:Record<string,string>={rainfall:"Rainfall",moisture:"Surface soil moisture",runoff:"Surface runoff"};
+  const available=isDemo?[]:[...environmentLayers,...Object.keys(mapDates).map(key=>({
+    key,name:dynamicNames[key],group:"Dynamic conditions",range:"0–"+(mapMeta?.maximum??"")+"+",unit:mapMeta?.unit??"",
+    source:[mapMeta?.source,day+" UTC",...(mapMeta?.status??[])].filter(Boolean).join(" · "),
+    colors:mapMeta?.colors.join(",")??"",description:"Daily regional grid at approximately 10 km. Darker colours indicate higher values."
+  }))];
+  const chosen=available.find(l=>l.key===referenceField);
+  const themeLabel=basemap==="Light"?"Switch to dark basemap":"Switch to light basemap";
   const locations = useMemo(() => {
     const choices = new Map(places.map((place) => [place.name, place]));
     for (const record of data?.incidents ?? []) {
@@ -102,17 +126,7 @@ export default function Explorer() {
               </div>
             )}
           </div>
-          <label className="inline-label">
-            Basemap{" "}
-            <select
-              value={basemap}
-              onChange={(e) => setBasemap(e.target.value)}
-            >
-              {["Light", "Terrain", "Satellite", "Dark"].map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </select>
-          </label>
+
           <button onClick={() => setPlace({ ...places[0] })}>Reset view</button>
           <button
             className={panel ? "active" : ""}
@@ -123,6 +137,7 @@ export default function Explorer() {
           </button>
         </div>
         <div className="explorer-workspace">
+          <button className="map-theme-toggle" aria-label={themeLabel} title={themeLabel} onClick={()=>setBasemap(basemap==="Light"?"Dark":"Light")}>{basemap==="Light"?<Moon size={17}/>:<Sun size={17}/>}</button>
           <TerrainMap
             incidents={data?.incidents ?? []}
             basemap={basemap}
@@ -133,6 +148,7 @@ export default function Explorer() {
             onSelect={setSelection}
             assessment={showsAssessment ? assessment : null}
             onViewport={setViewport}
+            environmentalField={dynamic?(mapMeta?referenceField+"-"+day:undefined):!chosen?undefined:referenceField==="cover"?"cover-"+coverYear:referenceField} environmentalOpacity={environmentOpacity}
           />
           {panel && (
             <aside className="layer-panel">
@@ -148,6 +164,7 @@ export default function Explorer() {
                   <X size={15} />
                 </button>
               </div>
+              <h4>Model assessment</h4>
               <label className="check-row">
                 <input
                   type="checkbox"
@@ -174,6 +191,7 @@ export default function Explorer() {
                   onChange={(e) => setOpacity(+e.target.value)}
                 />
               </label>
+              <h4>Historical landslides</h4>
               <label className="check-row">
                 <input
                   type="checkbox"
@@ -182,28 +200,12 @@ export default function Explorer() {
                 />
                 {isDemo ? "Demonstration records" : "Malaysia inventory (historical candidates)"}
               </label>
-              {groups
-                .filter((g) => g !== "Model output")
-                .map((group) => (
-                  <details key={group}>
-                    <summary>
-                      {group}
-                      <span>Not configured</span>
-                    </summary>
-                    {layers
-                      .filter((l) => l.group === group)
-                      .map((l) => (
-                        <label className="unavailable-layer" key={l.id}>
-                          <input type="checkbox" disabled />
-                          {l.name}
-                        </label>
-                      ))}
-                  </details>
-                ))}
-              <p className="microcopy">
-                Connect a geospatial dataset to enable its layer. LHASA is an
-                external hazard nowcast.
-              </p>
+              {available.length>0 && <h4>Environmental overlays</h4>}
+              {[...new Set(available.map(l=>l.group))].map(group=><details key={group}><summary>{group}</summary>{available.filter(l=>l.group===group).map(l=><label key={l.key} className="check-row"><input type="checkbox" checked={referenceField===l.key} onChange={e=>{setReferenceField(e.target.checked?l.key:undefined);setSelection(null)}}/>{l.name}</label>)}</details>)}
+              {dynamic && <label>Observation date (UTC) <input type="date" value={day} onChange={e=>setMapDate(e.target.value)}/></label>}
+              {chosen?.key==="cover" && <label>Reference year <select value={coverYear} onChange={e=>setCoverYear(Number(e.target.value))}>{coverYears.map(year=><option key={year}>{year}</option>)}</select></label>}
+              {chosen && <><label className="range-label">Overlay opacity <input type="range" min="0" max="1" step=".05" value={environmentOpacity} onChange={e=>setEnvironmentOpacity(+e.target.value)}/></label>
+              </>}
             </aside>
           )}
           {selection && (
@@ -283,6 +285,10 @@ export default function Explorer() {
               )}
             </aside>
           )}
+          {chosen && <details key={chosen.key} open className="environment-legend"><summary>{chosen.group} · {chosen.name}</summary>
+            {dynamic && !mapMeta?<p>No spatial export for this UTC day.</p>:<>{chosen.key==="cover"?<details><summary>Class colours</summary>{coverClasses.map(c=><div key={c.code} className="cover-class"><i style={{background:c.color}}/>{c.code} · {c.name}</div>)}</details>:<><div className="layer-gradient" style={{background:"linear-gradient(to right,"+chosen.colors+")"}}/>
+            <strong>{chosen.range} {chosen.unit}</strong></>}<p>{chosen.description}</p><small>{chosen.source}{chosen.key==="cover" && " · "+coverYear}</small></>}
+          </details>}
         </div>
         <div className="map-legend">
           <span className="eyebrow">
@@ -301,7 +307,7 @@ export default function Explorer() {
                 {national && (nationwide.resolution === 500 ? "500 m detail · " : "10 km overview · ")}
                 {assessment.assessment.scoredCells.toLocaleString("en-MY")} of {assessment.assessment.totalCells.toLocaleString("en-MY")} cells scored · {assessment.assessment.assessmentDate}
               </p>
-              {hasScores && <p className="legend-summary">Moderate covers SVM margins from ?{moderateMargin} to +{moderateMargin}.</p>}
+              {hasScores && <p className="legend-summary">Moderate means the model score is close to its cutoff of zero ({"\u2212"}{moderateMargin} to +{moderateMargin}). The score is a relative margin, not a probability.</p>}
             </>
           )}
           {zones && (

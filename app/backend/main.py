@@ -1,6 +1,8 @@
 """Read-only dashboard API for the curated research inventory."""
 
+import asyncio
 import csv
+from contextlib import asynccontextmanager, suppress
 import hashlib
 import json
 from pathlib import Path
@@ -9,10 +11,25 @@ from fastapi import FastAPI, HTTPException
 from model_evaluation import read_model_evaluation
 from incident_updates import read_updates, router as incident_updates_router
 from national_api import router as national_api_router
+from related_news import refresh_periodically, router as related_news_router
+from environmental_analytics import router as environmental_router
 
-app = FastAPI(title="Malaysia Landslide Dashboard")
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(refresh_periodically())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+app = FastAPI(title="Malaysia Landslide Dashboard", lifespan=lifespan)
 app.include_router(incident_updates_router)
 app.include_router(national_api_router)
+app.include_router(related_news_router)
+app.include_router(environmental_router)
 INVENTORY = (
     Path(__file__).resolve().parents[2]
     / "data/processed/inventory/event_candidates.csv"

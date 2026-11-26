@@ -1,0 +1,177 @@
+[
+  {
+    "code": 10,
+    "name": "Rainfed cropland",
+    "color": "#ffff64"
+  },
+  {
+    "code": 11,
+    "name": "Herbaceous cover cropland",
+    "color": "#ffff64"
+  },
+  {
+    "code": 12,
+    "name": "Tree or shrub cover (Orchard) cropland",
+    "color": "#ffff00"
+  },
+  {
+    "code": 20,
+    "name": "Irrigated cropland",
+    "color": "#aaf0f0"
+  },
+  {
+    "code": 51,
+    "name": "Open evergreen broadleaved forest",
+    "color": "#4c7300"
+  },
+  {
+    "code": 52,
+    "name": "Closed evergreen broadleaved forest",
+    "color": "#006400"
+  },
+  {
+    "code": 61,
+    "name": "Open deciduous broadleaved forest",
+    "color": "#aac800"
+  },
+  {
+    "code": 62,
+    "name": "Closed deciduous broadleaved forest",
+    "color": "#00a000"
+  },
+  {
+    "code": 71,
+    "name": "Open evergreen needle-leaved forest",
+    "color": "#005000"
+  },
+  {
+    "code": 72,
+    "name": "Closed evergreen needle-leaved forest",
+    "color": "#003c00"
+  },
+  {
+    "code": 81,
+    "name": "Open deciduous needle-leaved forest",
+    "color": "#286400"
+  },
+  {
+    "code": 82,
+    "name": "Closed deciduous needle-leaved forest",
+    "color": "#285000"
+  },
+  {
+    "code": 91,
+    "name": "Open mixed leaf forest",
+    "color": "#a0b432"
+  },
+  {
+    "code": 92,
+    "name": "Closed mixed leaf forest",
+    "color": "#788200"
+  },
+  {
+    "code": 120,
+    "name": "Shrubland",
+    "color": "#966400"
+  },
+  {
+    "code": 121,
+    "name": "Evergreen shrubland",
+    "color": "#964b00"
+  },
+  {
+    "code": 122,
+    "name": "Deciduous shrubland",
+    "color": "#966400"
+  },
+  {
+    "code": 130,
+    "name": "Grassland",
+    "color": "#ffb432"
+  },
+  {
+    "code": 140,
+    "name": "Lichens and mosses",
+    "color": "#ffdcd2"
+  },
+  {
+    "code": 150,
+    "name": "Sparse vegetation",
+    "color": "#ffebaf"
+  },
+  {
+    "code": 152,
+    "name": "Sparse shrubland",
+    "color": "#ffd278"
+  },
+  {
+    "code": 153,
+    "name": "Sparse herbaceous",
+    "color": "#ffebaf"
+  },
+  {
+    "code": 181,
+    "name": "Swamp",
+    "color": "#00a884"
+  },
+  {
+    "code": 182,
+    "name": "Marsh",
+    "color": "#73ffdf"
+  },
+  {
+    "code": 183,
+    "name": "Flooded flat",
+    "color": "#9ebbd7"
+  },
+  {
+    "code": 184,
+    "name": "Saline",
+    "color": "#828282"
+  },
+  {
+    "code": 185,
+    "name": "Mangrove",
+    "color": "#f57ab6"
+  },
+  {
+    "code": 186,
+    "name": "Salt marsh",
+    "color": "#66cdab"
+  },
+  {
+    "code": 187,
+    "name": "Tidal flat",
+    "color": "#444f89"
+  },
+  {
+    "code": 190,
+    "name": "Impervious surfaces",
+    "color": "#c31400"
+  },
+  {
+    "code": 200,
+    "name": "Bare areas",
+    "color": "#fff5d7"
+  },
+  {
+    "code": 201,
+    "name": "Consolidated bare areas",
+    "color": "#dcdcdc"
+  },
+  {
+    "code": 202,
+    "name": "Unconsolidated bare areas",
+    "color": "#fff5d7"
+  },
+  {
+    "code": 210,
+    "name": "Water body",
+    "color": "#0046c8"
+  },
+  {
+    "code": 220,
+    "name": "Permanent ice and snow",
+    "color": "#ffffff"
+  }
+]
