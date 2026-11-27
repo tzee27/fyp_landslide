@@ -1,13 +1,13 @@
 import type { DashboardPayload, Prediction } from "../types";
 import { incidents, sources } from "../mocks/data";
-const base = import.meta.env.VITE_API_BASE_URL?.replace(/[/]$/, "") ?? "";
+export const apiBase = import.meta.env.VITE_API_BASE_URL?.replace(/[/]$/, "") ?? "";
 export const isDemo = import.meta.env.VITE_DATA_MODE === "demo";
 export async function apiGet<T>(
   route: string,
   signal?: AbortSignal,
 ): Promise<T> {
   const timeout = AbortSignal.timeout(10_000);
-  const response = await fetch(base + route, {
+  const response = await fetch(apiBase + route, {
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     cache: "no-store",
   });
@@ -33,7 +33,7 @@ export async function inspectLocation(
 }
 
 export async function approveIncident(id: string, fields: Record<string, unknown>) {
-  const response = await fetch(base + "/api/incident-updates/" + encodeURIComponent(id) + "/review", {
+  const response = await fetch(apiBase + "/api/incident-updates/" + encodeURIComponent(id) + "/review", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(fields),

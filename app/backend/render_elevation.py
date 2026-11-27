@@ -16,9 +16,11 @@ for region,bounds in [("west",(99,0,105,8)),("east",(109,0,120,8))]:
     w,h=[round((extent[i+2]-extent[i])/500) for i in (0,1)]
     tr=from_bounds(*extent,w,h)
     z=np.full((h,w),np.nan,np.float32)
-    for tile in (base/"terrain/srtm").glob("*.tif"):
+    national=Path("data/dashboard/environmental/terrain")/f"srtm-{region}.tif"
+    sources=[national] if national.exists() else (base/"terrain/srtm").glob("*.tif")
+    for tile in sources:
         with rio.open(tile) as src:
-            if src.bounds.right<bounds[0] or src.bounds.left>bounds[2]: continue
+            if src.crs.is_geographic and (src.bounds.right<bounds[0] or src.bounds.left>bounds[2]): continue
             reproject(rio.band(src,1),z,dst_transform=tr,dst_crs="EPSG:3857",dst_nodata=np.nan,init_dest_nodata=False,resampling=Resampling.average)
     mask=np.isfinite(z)&geometry_mask(geoms,(h,w),tr,invert=True)
     z=np.nan_to_num(z)

@@ -1,4 +1,5 @@
 """Build clipped 1 km display rasters from verified local SoilGrids and SRTM bands."""
+import argparse
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,9 @@ layers = [
     ("bdod", "Bulk_Density", "#d6eff0", "#156076"),
     ("slope", None, "#e8efb1", "#b34420"),
 ]
+parser=argparse.ArgumentParser()
+parser.add_argument("--terrain-only", action="store_true")
+terrain_only=parser.parse_args().terrain_only
 state_file=ROOT/"data/dashboard/environmental/gaul-2015-states.geojson"
 states=json.loads(state_file.read_text())["features"]
 composition={}
@@ -36,50 +40,54 @@ for region, bounds in [("west", (99,0,105,8)), ("east", (109,0,120,8))]:
     w,h = [round((extent[i+2]-extent[i])/1000) for i in (0,1)]
     transform = from_bounds(*extent,w,h)
     inside = geometry_mask(land,(h,w),transform,invert=True)
-    zones={"Whole Malaysia":inside}
-    for state in states:
-        outline=transform_geom("EPSG:4326","EPSG:3857",state["geometry"])
-        zones[state["properties"]["name"]]=inside & geometry_mask([outline],(h,w),transform,invert=True)
-    lat=np.arctan(np.sinh((extent[3]+(np.arange(h)+.5)*transform.e)/6378137))
-    weights=np.broadcast_to((np.cos(lat[:,None])**2)*abs(transform.a*transform.e),(h,w))
-    # Annual categorical overviews use nearest-neighbour lookup to preserve class IDs.
-    classes=json.loads((ROOT/"app/frontend/src/services/landCoverClasses.json").read_text())
-    lookup=np.zeros((256,4),dtype="uint8")
-    for entry in classes:
-        lookup[entry["code"]]=[*bytes.fromhex(entry["color"][1:]),255]
-    suffix="Peninsular" if region=="west" else "East_Malaysia"
-    for path in sorted((BASE/"landcover/GLC_FCS30D").glob(f"Malaysia_*_{suffix}.tif")):
-        year=int(path.name.split("_")[3])
-        codes=np.zeros((h,w),dtype="uint8")
-        with rasterio.open(path) as src:
-            if src.count!=1 or src.descriptions[0]!="landcover":
-                raise ValueError(path)
-            reproject(rasterio.band(src,1),codes,dst_transform=transform,dst_crs="EPSG:3857",
-                      src_nodata=0,dst_nodata=0,resampling=Resampling.nearest)
-        codes[~inside]=0
-        add_composition(year,codes,zones,weights)
-        if not np.any(lookup[codes,3]): raise ValueError(path)
-        with rasterio.open(OUTPUT/f"cover-{year}-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
-            dst.write(lookup[codes].transpose(2,0,1))
-    # The January 2023 assessment uses the final band of the original annual product.
-    annual=np.zeros((h,w),dtype="uint8")
-    for path in sorted((BASE/"landcover/GLC_FCS30D").glob("GLC_FCS30D_20002022*Annual*.tif")):
-        with rasterio.open(path) as src:
-            if src.count!=23 or src.crs.to_epsg()!=4326: raise ValueError(path)
-            left,bottom,right,top=src.bounds
-            if right<=bounds[0] or left>=bounds[2] or top<=bounds[1] or bottom>=bounds[3]: continue
-            tile=np.zeros_like(annual)
-            reproject(rasterio.band(src,23),tile,dst_transform=transform,dst_crs="EPSG:3857",
-                      dst_nodata=0,resampling=Resampling.nearest)
-            valid=(lookup[tile,3]>0)&inside
-            annual[valid]=tile[valid]
-    add_composition(2022,annual,zones,weights)
-    if not annual.any(): raise ValueError(f"No 2022 land-cover pixels for {region}")
-    with rasterio.open(OUTPUT/f"cover-2022-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
-        dst.write(lookup[annual].transpose(2,0,1))
+    if not terrain_only:
+        zones={"Whole Malaysia":inside}
+        for state in states:
+            outline=transform_geom("EPSG:4326","EPSG:3857",state["geometry"])
+            zones[state["properties"]["name"]]=inside & geometry_mask([outline],(h,w),transform,invert=True)
+        lat=np.arctan(np.sinh((extent[3]+(np.arange(h)+.5)*transform.e)/6378137))
+        weights=np.broadcast_to((np.cos(lat[:,None])**2)*abs(transform.a*transform.e),(h,w))
+        # Annual categorical overviews use nearest-neighbour lookup to preserve class IDs.
+        classes=json.loads((ROOT/"app/frontend/src/services/landCoverClasses.json").read_text())
+        lookup=np.zeros((256,4),dtype="uint8")
+        for entry in classes:
+            lookup[entry["code"]]=[*bytes.fromhex(entry["color"][1:]),255]
+        suffix="Peninsular" if region=="west" else "East_Malaysia"
+        for path in sorted((BASE/"landcover/GLC_FCS30D").glob(f"Malaysia_*_{suffix}.tif")):
+            year=int(path.name.split("_")[3])
+            codes=np.zeros((h,w),dtype="uint8")
+            with rasterio.open(path) as src:
+                if src.count!=1 or src.descriptions[0]!="landcover":
+                    raise ValueError(path)
+                reproject(rasterio.band(src,1),codes,dst_transform=transform,dst_crs="EPSG:3857",
+                          src_nodata=0,dst_nodata=0,resampling=Resampling.nearest)
+            codes[~inside]=0
+            add_composition(year,codes,zones,weights)
+            if not np.any(lookup[codes,3]): raise ValueError(path)
+            with rasterio.open(OUTPUT/f"cover-{year}-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
+                dst.write(lookup[codes].transpose(2,0,1))
+        # The January 2023 assessment uses the final band of the original annual product.
+        annual=np.zeros((h,w),dtype="uint8")
+        for path in sorted((BASE/"landcover/GLC_FCS30D").glob("GLC_FCS30D_20002022*Annual*.tif")):
+            with rasterio.open(path) as src:
+                if src.count!=23 or src.crs.to_epsg()!=4326: raise ValueError(path)
+                left,bottom,right,top=src.bounds
+                if right<=bounds[0] or left>=bounds[2] or top<=bounds[1] or bottom>=bounds[3]: continue
+                tile=np.zeros_like(annual)
+                reproject(rasterio.band(src,23),tile,dst_transform=transform,dst_crs="EPSG:3857",
+                          dst_nodata=0,resampling=Resampling.nearest)
+                valid=(lookup[tile,3]>0)&inside
+                annual[valid]=tile[valid]
+        add_composition(2022,annual,zones,weights)
+        if not annual.any(): raise ValueError(f"No 2022 land-cover pixels for {region}")
+        with rasterio.open(OUTPUT/f"cover-2022-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
+            dst.write(lookup[annual].transpose(2,0,1))
     for key,folder,low,high in layers:
+        if terrain_only and key!="slope": continue
         values = np.full((h,w),np.nan,np.float32)
         files = (BASE/"terrain/srtm").glob("*.tif") if not folder else (BASE/"soil"/folder).glob("*.tif")
+        national=ROOT/"data/dashboard/environmental/terrain"/f"srtm-{region}.tif"
+        if not folder and national.exists(): files=[national]
         for path in files:
             with rasterio.open(path) as src:
                 if folder and "0-5cm" not in src.descriptions[0]:
@@ -116,6 +124,8 @@ for region, bounds in [("west", (99,0,105,8)), ("east", (109,0,120,8))]:
                 dst.write((a+(b-a)*scale).astype("uint8"),i+1)
             dst.write(mask.astype("uint8")*255,4)
 
+if terrain_only:
+    raise SystemExit(0)
 records=[]
 for (year,name),counts in sorted(composition.items()):
     measured=sum(counts[c["code"]] for c in classes)

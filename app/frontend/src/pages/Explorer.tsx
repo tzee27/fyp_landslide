@@ -21,6 +21,17 @@ import { environmentLayers } from "../services/environmentLayers";
 import {useMapDates} from "../hooks/useMapDates";
 import coverClasses from "../services/landCoverClasses.json";
 
+import {nearbyEnvironment} from "../services/nearbyEnvironment";
+
+function Measurements({values}:{values:Record<string,unknown>}){
+  return <dl className="details-list">{Object.entries(values).filter(([,v])=>
+    typeof v==="number"?Number.isFinite(v):typeof v==="string" && v.trim().length>0
+  ).map(([name,v])=>{
+    const label=name.replaceAll("_"," ");
+    const cover=name==="landcover_pre_event_class"?coverClasses.find(c=>c.code===Number(v)):undefined;
+    return <div key={name}><dt>{label}</dt><dd>{cover?.name ?? (typeof v==="number"?v.toLocaleString("en-MY",{maximumSignificantDigits:5}):String(v))}</dd></div>;
+  })}</dl>;
+}
 export default function Explorer() {
   const { data } = useData();
 
@@ -70,18 +81,32 @@ export default function Explorer() {
     : [];
   const nationwide = useNationalAssessment(!isDemo, national, viewport);
   const assessment = nationwide.assessment;
+  const [nearby,setNearby]=useState<Awaited<ReturnType<typeof nearbyEnvironment>>>();
+  const [sampleError,setSampleError]=useState(false);
+  const [cellError,setCellError]=useState(false);
   const selectedCellId = selection?.assessmentCellId;
   const selectedTile = selection?.tileId;
   useEffect(() => {
     setNationalCell(null);
+    setCellError(false);
     if (!national || !selectedCellId || !selectedTile) return;
     const controller = new AbortController();
     apiGet<StaticAssessment["features"][number]>(
       `/api/national-static/${nationwide.resolution}/tiles/${selectedTile}/cells/${selectedCellId}`, controller.signal,
-    ).then(setNationalCell).catch(() => {});
+    ).then(result=>{if(!controller.signal.aborted)setNationalCell(result)}).catch(()=>{if(!controller.signal.aborted)setCellError(true)});
     return () => controller.abort();
   }, [national, selectedCellId, selectedTile, nationwide.resolution]);
   const cell = national && nationalCell?.id === selectedCellId ? nationalCell : null;
+  useEffect(()=>{
+    let current=true;
+    setNearby(undefined);
+    setSampleError(false);
+    if(selection && !isDemo && (!national || !selectedCellId || cellError)){
+      nearbyEnvironment(selection.coordinates).then(result=>{if(current)setNearby(result)})
+        .catch(()=>{if(current)setSampleError(true)});
+    }
+    return ()=>{current=false};
+  },[selection,national,selectedCellId,cellError]);
   const showsAssessment = national;
   const hasScores = Boolean(showsAssessment && assessment?.assessment.scoredCells);
   return (
@@ -220,69 +245,23 @@ export default function Explorer() {
                   <X size={16} />
                 </button>
               </div>
-              <h2>{cell ? "Assessment cell" : selection.incident?.title ?? "Selected location"}</h2>
+              <h2>{selection.incident?.title ?? (selection.clusterCount ? selection.clusterCount+" inventory records" : cell ? "Assessment cell" : "Selected location")}</h2>
               <p className="coordinates">
                 {selection.coordinates[1].toFixed(5)}° N,{" "}
                 {selection.coordinates[0].toFixed(5)}° E
               </p>
-              {cell && assessment ? (
-                <>
-                  <p>{cell.properties.score !== null ? `${susceptibilityLevel(cell.properties.score)} · SVM margin ${cell.properties.score?.toFixed(4)}` : "Unscored assessment cell"}</p>
-                  <p>{assessment.assessment.model} · {assessment.assessment.assessmentDate}</p>
-                  {cell.properties.missing.length > 0 && <p>Missing or unsupported: {cell.properties.missing.join(", ")}</p>}
-                  <dl className="details-list">
-                    {Object.entries(cell.properties.environment).map(([name, value]) => (
-                      <div key={name}><dt>{name}</dt><dd>{typeof value === "number" ? value.toFixed(4) : value ?? "Unavailable"}</dd></div>
-                    ))}
-                  </dl>
-                </>
-              ) : selection.incident ? (
-                <>
-                  <span className="tag">
-                    {kindLabels[selection.incident.kind]}
-                  </span>
-                  <p>{selection.incident.precision}</p>
-                  <Link
-                    className="text-link"
-                    to={"/incidents?id=" + selection.incident.id}
-                  >
-                    Read record and evidence <ArrowUpRight size={14} />
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <div className="inspection-result">
-                    <span>{isDemo ? "Synthetic susceptibility" : "Model susceptibility"}</span>
-                    <strong>{selection.category ?? "Not available"}</strong>
-                    <small>
-                      {selection.category
-                        ? "Synthetic patch value; not a scientific result"
-                        : "No connected predictor extraction at this location."}
-                    </small>
-                  </div>
-                  <dl className="details-list">
-                    {[
-                      "Elevation",
-                      "Slope",
-                      "Soil composition",
-                      "Lithology",
-                      "Road / fault / waterway distance",
-                      "Land cover & year",
-                      "Antecedent rainfall",
-                      "Soil moisture",
-                      "Prediction timestamp",
-                    ].map((x) => (
-                      <div key={x}>
-                        <dt>{x}</dt>
-                        <dd>Not available</dd>
-                      </div>
-                    ))}
-                  </dl>
-                  <Link className="text-link" to="/methodology">
-                    Understanding susceptibility <ArrowUpRight size={14} />
-                  </Link>
-                </>
-              )}
+              {selection.incident && <p><span className="tag">{kindLabels[selection.incident.kind]}</span> <Link className="text-link" to={"/incidents?id="+selection.incident.id}>Read record and evidence ↗</Link></p>}
+              {cell ? <>
+                <p>{cell.properties.score!==null ? susceptibilityLevel(cell.properties.score)+" · SVM margin "+cell.properties.score.toFixed(4) : "This cell has environmental measurements but lacks a complete set of model inputs."}</p>
+                {cell.properties.score===null && cell.properties.missing.length>0 && <p className="microcopy">Inputs preventing a score · {cell.properties.missing.map(name=>name.replaceAll("_"," ")).join(", ")}</p>}
+                <small>Assessment cell sample · {assessment?.assessment.assessmentDate ?? "January 2023"}</small>
+                <Measurements values={cell.properties.environment}/>
+              </> : isDemo ? selection.category && <p>Synthetic susceptibility · {selection.category}</p>
+              : national && selectedCellId && !cellError ? <p role="status">Loading assessment cell…</p>
+              : nearby ? <><p>Nearby environmental sample · {nearby.distance.toLocaleString("en-MY",{maximumSignificantDigits:2})} km from selection</p>
+                <small>January 2023 assessment grid · measurements at the sample location</small>
+                <Measurements values={nearby.values}/>
+              </> : <p role="status">{sampleError?"Environmental samples could not be loaded.":nearby===undefined?"Checking environmental coverage…":"No published environmental sample within the supported Malaysian land area at this location."}</p>}
             </aside>
           )}
           {chosen && <details key={chosen.key} open className="environment-legend"><summary>{chosen.group} · {chosen.name}</summary>

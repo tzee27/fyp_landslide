@@ -1361,3 +1361,16 @@ main {
   border-color: #395d49;
   color: #fff;
 }
+
+.environmental-page .filterbar {display:flex;flex-wrap:wrap;align-items:end;gap:.8rem 1.1rem;margin:.85rem 0}
+.environmental-page .filterbar label {min-width:0}
+.environmental-page .date-controls input {min-height:42px;border:1px solid var(--line);border-radius:6px;padding:.45rem .7rem;background:#fffdf8;color:inherit}
+.range-presets {display:flex;flex-wrap:wrap;gap:.4rem}
+.environmental-page .analysis-layout {align-items:start;gap:1.3rem}
+.environmental-page .analysis-layout section,.environmental-page .state-board {min-width:0;background:#fffdf8;border:1px solid #deded2;border-radius:15px;padding:clamp(1rem,2vw,2rem);box-shadow:0 5px 20px #46513a0a}
+.environmental-page .analysis-layout aside {align-self:start;background:#eef1e8;border:1px solid #d9dfd1;border-radius:15px;padding:1.4rem}
+.environmental-page .analysis-layout aside h3 {margin:1rem 0 .3rem}
+.environmental-page .state-board summary {font-size:1.2rem;font-weight:600;cursor:pointer}
+.environmental-page .missing-dates {max-height:9rem;overflow:auto}
+.analytics-meta {font-size:.85rem;color:var(--muted);margin:1.5rem 0}
+@media(max-width:650px){.environmental-page .analysis-layout {grid-template-columns:minmax(0,1fr)}.environmental-page .filterbar select {max-width:100%}}

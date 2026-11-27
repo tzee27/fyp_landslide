@@ -11,6 +11,7 @@ maplibregl.setWorkerUrl(mapWorkerUrl);
 export interface Selection {
   coordinates: [number, number];
   category?: string;
+  clusterCount?: number;
   score?: number;
   incident?: Incident;
   assessmentCellId?: string;
@@ -136,6 +137,19 @@ export default function TerrainMap({
         "Some map tiles could not load. Check your internet connection; local demo overlays remain available.",
       ),
     );
+    // Local count icons work on raster basemaps without a glyph server.
+    m.on("styleimagemissing",({id})=>{
+      if(!/^inventory-count-\d+$/.test(id) || m.hasImage(id))return;
+      const count=id.slice("inventory-count-".length);
+      const canvas=document.createElement("canvas");
+      canvas.width=canvas.height=56;
+      const ctx=canvas.getContext("2d");
+      if(!ctx)return;
+      ctx.font="bold "+(count.length>3?17:21)+"px sans-serif";
+      ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle="#122c31";
+      ctx.fillText(count,28,28,49);
+      m.addImage(id,ctx.getImageData(0,0,56,56),{pixelRatio:2});
+    });
     m.on("load", () => {
       m.addSource("static-assessment", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       m.addLayer({
@@ -214,6 +228,7 @@ export default function TerrainMap({
           "circle-stroke-color": "#719aaa",
         },
       });
+      m.addLayer({id:"cluster-counts",type:"symbol",source:"records",filter:["has","point_count"],layout:{"icon-image":["concat","inventory-count-",["to-string",["get","point_count"]]],"icon-allow-overlap":true,"icon-ignore-placement":true}});
       fetch("/data/malaysia.json")
         .then((r) => {
           if (!r.ok) throw Error();
@@ -250,13 +265,13 @@ export default function TerrainMap({
       const cluster = features.find((f) => f.layer.id === "clusters");
       if (cluster) {
         m.easeTo({ center: e.lngLat, zoom: m.getZoom() + 2 });
-        return;
       }
       const record = features.find((f) => f.properties.id);
       const zone = features.find((f) => f.layer.id === "zones");
       const assessmentCell = features.find((f) => f.layer.id === "static-assessment-fill");
       callback.current?.({
         coordinates: [e.lngLat.lng, e.lngLat.lat],
+        clusterCount: cluster?.properties.point_count,
         category: zone?.properties.label,
         score: zone?.properties.score,
         assessmentCellId: assessmentCell?.properties.cellId,
@@ -339,7 +354,7 @@ export default function TerrainMap({
     m.setPaintProperty("static-assessment-fill", "fill-opacity", [
       "match", ["get", "displayLevel"], "Unscored", opacity * (0.14 / 0.65), opacity,
     ]);
-    ["points", "areas", "clusters"].forEach((id) =>
+    ["points", "areas", "clusters", "cluster-counts"].forEach((id) =>
       m.setLayoutProperty(id, "visibility", showRecords ? "visible" : "none"),
     );
     (m.getSource("records") as maplibregl.GeoJSONSource).setData(

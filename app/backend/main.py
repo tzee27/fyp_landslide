@@ -12,14 +12,19 @@ from model_evaluation import read_model_evaluation
 from incident_updates import read_updates, router as incident_updates_router
 from national_api import router as national_api_router
 from related_news import refresh_periodically, router as related_news_router
+from environmental_ranges import router as range_router, schedule
 from environmental_analytics import router as environmental_router
 
 @asynccontextmanager
 async def lifespan(app):
     task = asyncio.create_task(refresh_periodically())
+    environmental_task = asyncio.create_task(schedule())
     try:
         yield
     finally:
+        environmental_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await environmental_task
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task
@@ -30,6 +35,7 @@ app.include_router(incident_updates_router)
 app.include_router(national_api_router)
 app.include_router(related_news_router)
 app.include_router(environmental_router)
+app.include_router(range_router)
 INVENTORY = (
     Path(__file__).resolve().parents[2]
     / "data/processed/inventory/event_candidates.csv"

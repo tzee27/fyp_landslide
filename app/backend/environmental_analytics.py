@@ -88,7 +88,7 @@ def period_image(ee, factor, day, hourly=False):
     source = ee.ImageCollection(asset).filterDate(day.isoformat(), end.isoformat())
     timestamps = source.aggregate_array('system:time_start').getInfo()
     instant = datetime.fromisoformat(day.isoformat()).replace(tzinfo=UTC)
-    first = int(instant.timestamp() * 1000)
+    first = int((instant-datetime(1970,1,1,tzinfo=UTC)).total_seconds()*1000)
     step = 1800000 if factor == 'rainfall' else 86400000
     if sorted(timestamps) != [first + i * step for i in range(expected)]:
         return None
@@ -161,7 +161,7 @@ def prepare(project, start, end, factors, revise=False, hours=()):
                         rows.update({(factor,key,r['region']):r for r in batch})
                         publish(batch, expected_regions)
             existing = [rows.get((factor, day.isoformat(), region)) for region in expected_regions]
-            if not revise and all(row and row['coverage'] >= .95 for row in existing):
+            if not revise and all(row and row.get('samples') == SOURCES[factor][3] for row in existing):
                 continue
             fresh = extract_day(ee, regions, factor, day)
             if fresh and {row['region'] for row in fresh} != expected_regions:
@@ -187,7 +187,10 @@ def source_availability(project):
         products[asset] = {k: (epoch + timedelta(milliseconds=v)).isoformat() for k,v in times.items()}
     report = {'checkedAt': datetime.now(UTC).isoformat(), 'products': products}
     OUTPUT.parent.mkdir(parents=True,exist_ok=True)
-    OUTPUT.with_name('source-availability.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+    with observation_writer():
+        temp=OUTPUT.with_name('source-availability.tmp')
+        temp.write_text(json.dumps(report,indent=2),encoding='utf-8')
+        temp.replace(OUTPUT.with_name('source-availability.json'))
     return report
 
 
@@ -207,7 +210,7 @@ def refresh_latest(project, factors, lookback_days=3):
     for factor in factors:
         last = datetime.fromisoformat(bounds[SOURCES[factor][0]]['last']).date()
         end = min(datetime.now(UTC).date(),last + timedelta(days=1))
-        prepare(project,end-timedelta(days=lookback_days),end,[factor])
+        prepare(project,end-timedelta(days=lookback_days),end,[factor],revise=True)
 
 
 def calendar_summaries(rows):
