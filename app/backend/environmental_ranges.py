@@ -46,7 +46,13 @@ def source_bounds(factor):
     end=last.date()
     if factor=="rainfall" and (last.hour,last.minute)<(23,30):
         end-=DAY
-    return info["first"][:10], min(end,datetime.now(UTC).date()-DAY).isoformat(),info["last"]
+    if factor.endswith("_hourly"):
+        anchor = last - (timedelta(hours=1) if factor=="runoff_hourly" else timedelta())
+        end = anchor.date() - (DAY if anchor.hour<23 else timedelta())
+    first = date.fromisoformat(info["first"][:10])
+    if factor=="moisture_hourly" and datetime.fromisoformat(info["first"]).hour:
+        first += DAY
+    return first.isoformat(), min(end,datetime.now(UTC).date()-DAY).isoformat(),info["last"]
 
 
 def validate(factor,start,end):
@@ -99,6 +105,7 @@ def worker_step():
             with queue() as db: update(db,key,"","running")
             try:
                 env.refresh_latest(PROJECT,list(env.SOURCES))
+                logging.getLogger("uvicorn.error").info("Environmental refresh completed at %s",now())
                 with queue() as db:
                     update(db,key,"","complete")
                     update(db,("refresh-success","",""),"","complete")
@@ -113,6 +120,7 @@ def worker_step():
         with queue() as db: update(db,key,cursor.isoformat(),"running")
         try:
             env.backfill(PROJECT,cursor,stop,[key[0]])
+            logging.getLogger("uvicorn.error").info("Environmental %s batch processed: %s to %s (exclusive)",key[0],cursor,stop)
             state="complete" if stop>date.fromisoformat(key[2]) else "queued"
             with queue() as db: update(db,key,stop.isoformat(),state)
         except Exception:
@@ -136,6 +144,7 @@ def catalog():
         row=db.execute("SELECT state,detail,updated FROM jobs WHERE factor='refresh'").fetchone()
         success=db.execute("SELECT updated FROM jobs WHERE factor='refresh-success'").fetchone()
     sources={}
+    availability=json.loads(env.OUTPUT.with_name("source-availability.json").read_text())["products"]
     for factor,meta in data["sources"].items():
         low,high,stamp=source_bounds(factor)
         latest={}
@@ -143,13 +152,16 @@ def catalog():
             if r["factor"]==factor and len(r["date"])==10 and eligible(r):
                 latest[r["region"]]=max(latest.get(r["region"],""),r["date"])
         sources[factor]={**meta,"first":low,"last":high,"sourceTimestamp":stamp,"latest":latest}
+        if factor=="rainfall" or factor.endswith("_hourly"):
+            field="intervalEndDays" if factor=="runoff_hourly" else "recentDays"
+            sources[factor]["recentDays"]=availability[env.SOURCES[factor][0]].get(field,{})
     return {"sources":sources,"regions":data["regions"],"refreshedAt":data["refreshedAt"],"lastRefresh":success["updated"] if success else row["updated"] if row and row["state"]=="complete" else None,"refresh":dict(row) if row else None}
 
 
 def summarize(rows,expected,factor):
     valid=[r for r in rows if eligible(r)]
     values=[r["value"] for r in valid]
-    return {"value":(mean(values) if factor=="moisture" else sum(values)) if len(values)==expected else None,
+    return {"value":(mean(values) if factor.startswith("moisture") else sum(values)) if len(values)==expected else None,
             "count":len(values),"expected":expected,"coverage":min((r["coverage"] for r in rows),default=None),
             "min":min(values,default=None),"max":max(values,default=None),
             "peakDate":max(valid,key=lambda row:row["value"])["date"] if valid else None}
@@ -181,13 +193,28 @@ def range_view(factor:str,region:str,start:date,end:date):
         elif resolution=="Yearly": stop=cursor.replace(month=12,day=31)
         stop=min(stop,end)
         chunk=[history[region][d] for d in (str(cursor+i*DAY) for i in range((stop-cursor).days+1)) if d in history[region]]
-        chart.append({"date":str(cursor),"through":str(stop),**summarize(chunk,(stop-cursor).days+1,factor)})
+        expected=(stop-cursor).days+1
+        if resolution=="Monthly":
+            expected=calendar.monthrange(cursor.year,cursor.month)[1]
+        chart.append({"date":str(cursor),"through":str(stop),**summarize(chunk,expected,factor)})
         cursor=stop+DAY
+    if totals["count"] and not any(item["value"] is not None for item in chart):
+        # Expose measured days when none of the larger intervals is complete.
+        resolution="Daily (available observations)"
+        chart=[]
+        prior=None
+        for row in sorted((r for r in rows if eligible(r)),key=lambda r:r["date"]):
+            day=date.fromisoformat(row["date"])
+            if prior and day>prior+DAY:
+                chart.append({"date":str(prior+DAY),"through":str(day-DAY),"value":None})
+            chart.append({"date":str(day),"through":str(day),**summarize([row],1,factor)})
+            prior=day
     comparison=[{"name":s,**summarize(between(s,start,end),days,factor)} for s in data["regions"] if s!="Whole Malaysia"]
     missing=[str(start+i*DAY) for i in range(days) if not eligible(history[region].get(str(start+i*DAY)))]
     with queue() as db:
         job=db.execute("SELECT state,detail,cursor FROM jobs WHERE factor=? AND start=? AND end=?",(factor,str(start),str(end))).fetchone()
     return {"chart":chart,"resolution":resolution,"summary":totals,"missing":missing,
+            "belowCoverage":sum(r["coverage"]<.95 for r in rows),"uncached":days-len(rows),
             "comparison":sorted(comparison,key=lambda x:x["value"] if x["value"] is not None else -1,reverse=True),
             "previous":summarize(between(region,start-days*DAY,start-DAY),days,factor)["value"],
             "stages":sorted({s for r in rows for s in r.get("processingStatus",[])}),
@@ -202,7 +229,7 @@ def reference_summary(factor:str,region:str):
     if factor not in {*fields,"soil"}: raise HTTPException(422,"Unknown reference variable.")
     boundary=None
     if region!="Whole Malaysia":
-        states=json.loads(env.OUTPUT.with_name("gaul-2015-states.geojson").read_text())
+        states=json.loads((env.REFERENCE_DIR/"gaul-2015-states.geojson").read_text())
         state=next((f for f in states["features"] if f["properties"]["name"]==region),None)
         if not state: raise HTTPException(422,"Unknown reference region.")
         boundary=shape(state["geometry"])
@@ -220,3 +247,39 @@ def reference_summary(factor:str,region:str):
     counts=[0]*(10 if hi>lo else 1)
     for v in values: counts[min(len(counts)-1,int((v-lo)/width))]+=1
     return {"n":len(values),"chart":[{"label":f"{lo+i*width:.3g}–{lo+(i+1)*width:.3g}","count":n} for i,n in enumerate(counts)],"date":exported["referenceDate"]}
+
+@router.get("/cover-preview/{product}/{year}/{kind}")
+def preview_cover(product:str,year:int,kind:str,region:str="Whole Malaysia"):
+    from cover_preview import cover_preview
+    return cover_preview(product,year,kind,region)
+
+@router.get("/dynamic-world")
+def dynamic_world():
+    folder=env.OUTPUT.parent/"dynamic-world"
+    years=[]
+    for path in sorted(folder.glob("[0-9][0-9][0-9][0-9].json")):
+        item=json.loads(path.read_text())
+        item.pop("images",None)
+        check=folder/f"source-{item['year']}.json"
+        item["sourceThrough"]=json.loads(check.read_text())["latest"] if check.exists() else item["through"]
+        years.append(item)
+    status=folder/"refresh.json"
+    return {"years":years,"refresh":json.loads(status.read_text()) if status.exists() else {}}
+
+@router.get("/dynamic-world/{year}/map")
+def dynamic_world_map(year:int):
+    from fastapi.responses import FileResponse
+    folder=env.OUTPUT.parent/"dynamic-world"
+    path=folder/f"{year}.json"
+    if not path.exists(): raise HTTPException(404,"Year unavailable")
+    raster=folder/json.loads(path.read_text())["raster"]
+    return FileResponse(raster,filename=raster.name,media_type="image/tiff")
+
+async def cover_schedule():
+    while True:
+        try:
+            from dynamic_cover import refresh_dynamic_world
+            await asyncio.to_thread(refresh_dynamic_world)
+        except Exception:
+            logging.exception("Dynamic World export")
+        await asyncio.sleep(900)

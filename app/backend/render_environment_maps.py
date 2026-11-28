@@ -24,7 +24,9 @@ layers = [
 ]
 parser=argparse.ArgumentParser()
 parser.add_argument("--terrain-only", action="store_true")
-terrain_only=parser.parse_args().terrain_only
+parser.add_argument("--cover-only",action="store_true")
+args=parser.parse_args()
+terrain_only=args.terrain_only
 state_file=ROOT/"data/dashboard/environmental/gaul-2015-states.geojson"
 states=json.loads(state_file.read_text())["features"]
 composition={}
@@ -52,36 +54,27 @@ for region, bounds in [("west", (99,0,105,8)), ("east", (109,0,120,8))]:
         lookup=np.zeros((256,4),dtype="uint8")
         for entry in classes:
             lookup[entry["code"]]=[*bytes.fromhex(entry["color"][1:]),255]
-        suffix="Peninsular" if region=="west" else "East_Malaysia"
-        for path in sorted((BASE/"landcover/GLC_FCS30D").glob(f"Malaysia_*_{suffix}.tif")):
-            year=int(path.name.split("_")[3])
-            codes=np.zeros((h,w),dtype="uint8")
-            with rasterio.open(path) as src:
-                if src.count!=1 or src.descriptions[0]!="landcover":
-                    raise ValueError(path)
-                reproject(rasterio.band(src,1),codes,dst_transform=transform,dst_crs="EPSG:3857",
-                          src_nodata=0,dst_nodata=0,resampling=Resampling.nearest)
-            codes[~inside]=0
-            add_composition(year,codes,zones,weights)
-            if not np.any(lookup[codes,3]): raise ValueError(path)
-            with rasterio.open(OUTPUT/f"cover-{year}-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
-                dst.write(lookup[codes].transpose(2,0,1))
-        # The January 2023 assessment uses the final band of the original annual product.
-        annual=np.zeros((h,w),dtype="uint8")
-        for path in sorted((BASE/"landcover/GLC_FCS30D").glob("GLC_FCS30D_20002022*Annual*.tif")):
-            with rasterio.open(path) as src:
-                if src.count!=23 or src.crs.to_epsg()!=4326: raise ValueError(path)
-                left,bottom,right,top=src.bounds
-                if right<=bounds[0] or left>=bounds[2] or top<=bounds[1] or bottom>=bounds[3]: continue
-                tile=np.zeros_like(annual)
-                reproject(rasterio.band(src,23),tile,dst_transform=transform,dst_crs="EPSG:3857",
-                          dst_nodata=0,resampling=Resampling.nearest)
-                valid=(lookup[tile,3]>0)&inside
-                annual[valid]=tile[valid]
-        add_composition(2022,annual,zones,weights)
-        if not annual.any(): raise ValueError(f"No 2022 land-cover pixels for {region}")
-        with rasterio.open(OUTPUT/f"cover-2022-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
-            dst.write(lookup[annual].transpose(2,0,1))
+        # Product guide: three five-year snapshots, then 23 annual bands.
+        archives=[("*5years*.tif",[1985,1990,1995]),("*Annual*.tif",list(range(2000,2023)))]
+        from rasterio.vrt import WarpedVRT
+        for pattern, years in archives:
+            stack=np.zeros((len(years),h,w),dtype="uint8")
+            for path in sorted((BASE/"landcover/GLC_FCS30D").glob(pattern)):
+                with rasterio.open(path) as src:
+                    if src.count!=len(years) or src.crs.to_epsg()!=4326: raise ValueError(path)
+                    left,bottom,right,top=src.bounds
+                    if right<=bounds[0] or left>=bounds[2] or top<=bounds[1] or bottom>=bounds[3]: continue
+                    with WarpedVRT(src,crs="EPSG:3857",width=w,height=h,transform=transform,
+                                   resampling=Resampling.nearest,nodata=0) as vrt:
+                        for i,tile in enumerate(vrt.read()):
+                            valid=inside & (lookup[tile,3]>0)
+                            stack[i,valid]=tile[valid]
+            for year,codes in zip(years,stack,strict=True):
+                if not codes.any(): raise ValueError(f"Missing {region} land-cover map for {year}")
+                add_composition(year,codes,zones,weights)
+                with rasterio.open(OUTPUT/f"cover-{year}-{region}.png","w",driver="PNG",width=w,height=h,count=4,dtype="uint8") as dst:
+                    dst.write(lookup[codes].transpose(2,0,1))
+    if args.cover_only: continue
     for key,folder,low,high in layers:
         if terrain_only and key!="slope": continue
         values = np.full((h,w),np.nan,np.float32)
@@ -134,4 +127,7 @@ for (year,name),counts in sorted(composition.items()):
     records.append(dict(year=year,region=name,coverage=coverage,shares=shares))
 payload={"source":"GLC_FCS30D","boundary":"FAO/GAUL/2015/level1","resolutionMetres":1000,
          "refreshedAt":datetime.now(UTC).isoformat(),"rows":records}
-(OUTPUT/"land-cover-composition.json").write_text(json.dumps(payload,separators=(",",":"),allow_nan=False))
+target=OUTPUT/"land-cover-composition.json"
+temporary=target.with_suffix(".tmp")
+temporary.write_text(json.dumps(payload,separators=(",",":"),allow_nan=False))
+temporary.replace(target)

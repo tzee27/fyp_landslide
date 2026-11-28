@@ -1365,7 +1365,10 @@ main {
 .environmental-page .filterbar {display:flex;flex-wrap:wrap;align-items:end;gap:.8rem 1.1rem;margin:.85rem 0}
 .environmental-page .filterbar label {min-width:0}
 .environmental-page .date-controls input {min-height:42px;border:1px solid var(--line);border-radius:6px;padding:.45rem .7rem;background:#fffdf8;color:inherit}
-.range-presets {display:flex;flex-wrap:wrap;gap:.4rem}
+.range-presets {display:flex;flex:0 0 100%;flex-wrap:wrap;gap:.4rem}
+.range-presets button {border-radius:999px;padding-inline:1rem}
+.incident-toolbar nav {display:flex;flex-wrap:wrap;gap:inherit}
+.incident-toolbar .incident-reload {margin-inline-start:auto}
 .environmental-page .analysis-layout {align-items:start;gap:1.3rem}
 .environmental-page .analysis-layout section,.environmental-page .state-board {min-width:0;background:#fffdf8;border:1px solid #deded2;border-radius:15px;padding:clamp(1rem,2vw,2rem);box-shadow:0 5px 20px #46513a0a}
 .environmental-page .analysis-layout aside {align-self:start;background:#eef1e8;border:1px solid #d9dfd1;border-radius:15px;padding:1.4rem}
@@ -1374,3 +1377,10 @@ main {
 .environmental-page .missing-dates {max-height:9rem;overflow:auto}
 .analytics-meta {font-size:.85rem;color:var(--muted);margin:1.5rem 0}
 @media(max-width:650px){.environmental-page .analysis-layout {grid-template-columns:minmax(0,1fr)}.environmental-page .filterbar select {max-width:100%}}
+.cover-preview {width:100%;height:clamp(190px,27vw,345px);object-fit:contain;background:#ecede6}
+.cover-stack {display:flex;height:1.5rem;overflow:hidden;border-radius:.3rem}
+.cover-table {border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+.cover-table th,.cover-table td {text-align:left;padding:.4rem;border-bottom:1px solid var(--line)}
+.cover-table i {display:inline-block;width:.7rem;height:.7rem;margin-right:.4rem}
+.cover-delta {position:relative;width:min(12vw,9rem);height:.65rem;display:inline-block;margin-right:.4rem;background:linear-gradient(to right,transparent 49%,#999 50%,transparent 51%)}
+.cover-delta b {position:absolute;height:100%}

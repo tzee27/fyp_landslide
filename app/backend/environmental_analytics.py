@@ -1,6 +1,7 @@
 """Prepare daily area-weighted environmental summaries independently of inference."""
 
 import argparse
+import os
 import csv
 from contextlib import contextmanager, closing
 import hashlib
@@ -12,9 +13,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-OUTPUT = Path(__file__).resolve().parents[2] / 'data/dashboard/environmental/observations.json'
+REFERENCE_DIR = Path(__file__).resolve().parents[2] / 'data/dashboard/environmental'
+OUTPUT = Path(os.environ.get('ENVIRONMENTAL_DATA_DIR', REFERENCE_DIR)) / 'observations.json'
 REGIONS = 'FAO/GAUL/2015/level1'
-MAP_OUTPUT = OUTPUT.with_name('reference-points.geojson')
+MAP_OUTPUT = REFERENCE_DIR / 'reference-points.geojson'
 REFERENCE_FIELDS = ('slope_deg', 'elevation_m', 'profile_curvature_m_inv', 'plan_curvature_m_inv',
                     'soil_clay_surface', 'soil_sand_surface', 'soil_silt_surface', 'soil_bdod_surface',
                     'topographic_wetness_index', 'merit_hand_m', 'merit_upstream_area_km2',
@@ -24,6 +26,8 @@ SOURCES = {
     'moisture': ('ECMWF/ERA5_LAND/DAILY_AGGR', 'volumetric_soil_water_layer_1', 'm³/m³', 1, 1),
     'runoff': ('ECMWF/ERA5_LAND/DAILY_AGGR', 'surface_runoff_sum', 'mm', 1, 1000),
 }
+SOURCES["moisture_hourly"] = ("ECMWF/ERA5_LAND/HOURLY", "volumetric_soil_water_layer_1", SOURCES["moisture"][2], 24, 1)
+SOURCES["runoff_hourly"] = ("ECMWF/ERA5_LAND/HOURLY", "surface_runoff_hourly", "mm", 24, 1000)
 router = APIRouter()
 
 
@@ -83,22 +87,26 @@ def period_image(ee, factor, day, hourly=False):
     asset, band, unit, expected, multiplier = SOURCES[factor]
     if hourly and factor != 'rainfall':
         raise ValueError('Only rainfall supports hourly processing.')
+    if factor.endswith("_hourly"):
+        day = datetime.combine(day, datetime.min.time(), UTC)
+        if factor == "runoff_hourly":
+            day += timedelta(hours=1)  # Increments are stamped at the end of the accumulation interval.
     end = day + (timedelta(hours=1) if hourly else timedelta(days=1))
     expected = 2 if hourly else expected
     source = ee.ImageCollection(asset).filterDate(day.isoformat(), end.isoformat())
     timestamps = source.aggregate_array('system:time_start').getInfo()
     instant = datetime.fromisoformat(day.isoformat()).replace(tzinfo=UTC)
     first = int((instant-datetime(1970,1,1,tzinfo=UTC)).total_seconds()*1000)
-    step = 1800000 if factor == 'rainfall' else 86400000
+    step = 1800000 if factor == 'rainfall' else 3600000 if factor.endswith('_hourly') else 86400000
     if sorted(timestamps) != [first + i * step for i in range(expected)]:
         return None
     images = source.select(band)
     projection = images.first().projection()
-    value = images.sum().multiply(multiplier).rename('value')
+    value = (images.mean() if factor == 'moisture_hourly' else images.sum()).multiply(multiplier).rename('value')
     valid = images.count().eq(expected).And(images.min().gte(0))
-    if factor == 'moisture':
-        valid = valid.And(value.lte(1))
-    status = source.aggregate_array('status').distinct().getInfo() if factor == 'rainfall' else []
+    if factor.startswith('moisture'):
+        valid = valid.And(images.max().lte(1))
+    status = source.aggregate_array('status').distinct().getInfo() if factor == 'rainfall' else ['24-hour derived'] if factor.endswith('_hourly') else []
     return value.updateMask(valid), projection, expected, status
 
 
@@ -125,6 +133,15 @@ def extract_day(ee, regions, factor, day, hourly=False):
     return rows
 
 
+def initialize_earth_engine(ee,project):
+    if os.getenv("EARTH_ENGINE_USE_ADC")=="1":
+        import google.auth
+        credentials,_=google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform","https://www.googleapis.com/auth/earthengine"])
+        ee.Initialize(credentials=credentials,project=project)
+    else:
+        ee.Initialize(project=project)
+
+
 def prepare(project, start, end, factors, revise=False, hours=()):
     import ee
 
@@ -132,7 +149,7 @@ def prepare(project, start, end, factors, revise=False, hours=()):
         raise ValueError('Use a completed UTC date range of 1–31 days, with an exclusive end.')
     if any(hour not in range(24) for hour in hours):
         raise ValueError('Use UTC hours 0–23.')
-    ee.Initialize(project=project)
+    initialize_earth_engine(ee,project)
     states = ee.FeatureCollection(REGIONS).filter(ee.Filter.eq('ADM0_NAME', 'Malaysia'))
     names = states.aggregate_array('ADM1_NAME').getInfo()
     if len(names) < 13 or len(names) != len(set(names)):
@@ -175,7 +192,7 @@ def prepare(project, start, end, factors, revise=False, hours=()):
 def source_availability(project):
     """Collection bounds describe source timestamps, independently of dashboard coverage."""
     import ee
-    ee.Initialize(project=project)
+    initialize_earth_engine(ee,project)
     epoch = datetime(1970, 1, 1, tzinfo=UTC)
     products = {}
     for asset in sorted({item[0] for item in SOURCES.values()}):
@@ -185,6 +202,20 @@ def source_availability(project):
             for key, ascending in [('first', True), ('last', False)]
         }).getInfo()
         products[asset] = {k: (epoch + timedelta(milliseconds=v)).isoformat() for k,v in times.items()}
+        if asset in (SOURCES['rainfall'][0], SOURCES['moisture_hourly'][0]):
+            last = datetime.fromisoformat(products[asset]['last']).date()
+            first = last - timedelta(days=6)
+            stamps = collection.filterDate(first.isoformat(), (last + timedelta(days=1)).isoformat()).aggregate_array('system:time_start').getInfo()
+            count = 48 if asset == SOURCES['rainfall'][0] else 24
+            for shift in ([0] if count == 48 else [0, 3600000]):
+                recent = {}
+                for offset in range(7):
+                    day = first + timedelta(days=offset)
+                    start = int(datetime.combine(day, datetime.min.time(), UTC).timestamp()) * 1000 + shift
+                    slots = {start + i * (86400000 // count) for i in range(count)}
+                    observed = [t for t in stamps if start <= t < start + 86400000]
+                    recent[day.isoformat()] = {'slots': len(slots.intersection(observed)), 'exact': sorted(observed) == sorted(slots)}
+                products[asset]['intervalEndDays' if shift else 'recentDays'] = recent
     report = {'checkedAt': datetime.now(UTC).isoformat(), 'products': products}
     OUTPUT.parent.mkdir(parents=True,exist_ok=True)
     with observation_writer():
@@ -203,7 +234,7 @@ def backfill(project, start, end, factors, hours=(), batch_days=7):
         start = stop
 
 
-def refresh_latest(project, factors, lookback_days=3):
+def refresh_latest(project, factors, lookback_days=7):
     if not 1 <= lookback_days <= 31:
         raise ValueError('Use a lookback of 1–31 days.')
     bounds = source_availability(project)['products']
@@ -228,7 +259,7 @@ def calendar_summaries(rows):
         expected=monthrange(year,int(period[5:]))[1] if resolution=='monthly' else 365+isleap(year)
         eligible=[r for r in group if r['value'] is not None and r['coverage']>=.95]
         complete=len(group)==expected and len({r['date'] for r in eligible})==expected
-        method='mean' if factor=='moisture' else 'sum'
+        method='mean' if factor.startswith('moisture') else 'sum'
         value=sum(r['value'] for r in eligible)/(expected if method=='mean' else 1) if complete else None
         result.append(dict(factor=factor,region=region,resolution=resolution,period=period,
                            eligibleDays=len(eligible),expectedDays=expected,value=value,aggregation=method))

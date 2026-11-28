@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Water",
+    "code": 0,
+    "color": "#419bdf",
+    "description": "Open surface water"
+  },
+  {
+    "name": "Trees",
+    "code": 1,
+    "color": "#397d49",
+    "description": "Land dominated by tree canopy"
+  },
+  {
+    "name": "Grass",
+    "code": 2,
+    "color": "#88b053",
+    "description": "Open grassy vegetation"
+  },
+  {
+    "name": "Flooded vegetation",
+    "code": 3,
+    "color": "#7a87c6",
+    "description": "Vegetation mixed with standing water"
+  },
+  {
+    "name": "Crops",
+    "code": 4,
+    "color": "#e49635",
+    "description": "Cultivated fields"
+  },
+  {
+    "name": "Shrub and scrub",
+    "code": 5,
+    "color": "#b39e58",
+    "description": "Low woody vegetation"
+  },
+  {
+    "name": "Built surfaces",
+    "code": 6,
+    "color": "#bf584e",
+    "description": "Buildings, roads and other developed surfaces"
+  },
+  {
+    "name": "Bare ground",
+    "code": 7,
+    "color": "#a49587",
+    "description": "Exposed soil, rock or sand"
+  },
+  {
+    "name": "Snow and ice",
+    "code": 8,
+    "color": "#a3bdd4",
+    "description": "Snow or ice cover"
+  }
+]

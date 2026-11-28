@@ -1,0 +1,19 @@
+[Unit]
+Description=Malaysia landslide dashboard API and environmental refresh worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=landslide
+WorkingDirectory=/srv/landslide_fyp/app/backend
+EnvironmentFile=/etc/landslide/environment
+Environment=ENVIRONMENTAL_DATA_DIR=/var/lib/landslide-environment
+Environment=EARTH_ENGINE_USE_ADC=1
+StateDirectory=landslide-environment
+ExecStart=/srv/landslide_fyp/app/backend/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

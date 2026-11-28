@@ -12,16 +12,20 @@ from model_evaluation import read_model_evaluation
 from incident_updates import read_updates, router as incident_updates_router
 from national_api import router as national_api_router
 from related_news import refresh_periodically, router as related_news_router
-from environmental_ranges import router as range_router, schedule
+from environmental_ranges import router as range_router, schedule, cover_schedule
 from environmental_analytics import router as environmental_router
 
 @asynccontextmanager
 async def lifespan(app):
     task = asyncio.create_task(refresh_periodically())
+    cover_task = asyncio.create_task(cover_schedule())
     environmental_task = asyncio.create_task(schedule())
     try:
         yield
     finally:
+        cover_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cover_task
         environmental_task.cancel()
         with suppress(asyncio.CancelledError):
             await environmental_task

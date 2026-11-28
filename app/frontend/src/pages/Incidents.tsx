@@ -52,17 +52,18 @@ export default function Incidents() {
         number="04"
         title="Incident Monitor"
         description="Occurrences, reports and evidence. A distinction that matters."
-      >
-        <button onClick={refresh} disabled={loading}>
-          <RefreshCw size={14} /> Reload data
-        </button>
-      </PageHeader>
-      {!isDemo && <nav className="filterbar" aria-label="Incident Monitor sections">
+      />
+      <div className="filterbar incident-toolbar">
+        {!isDemo && <nav aria-label="Incident Monitor sections">
         <button type="button" aria-pressed={!reviewing} onClick={() => showSection(false)}>Report Notebook</button>
         <button type="button" aria-pressed={reviewing} onClick={() => showSection(true)}>
           Updates to review ({data?.pendingUpdates?.length ?? 0})
         </button>
-      </nav>}
+        </nav>}
+        <button className="incident-reload" onClick={refresh} disabled={loading}>
+          <RefreshCw size={14} /> Reload data
+        </button>
+      </div>
       <DemoNote>
         {isDemo
           ? "Demonstration notebook with synthetic records."

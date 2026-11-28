@@ -18,6 +18,7 @@ import { moderateMargin, susceptibilityColors, susceptibilityLevel } from "../se
 
 import { environmentLayers } from "../services/environmentLayers";
 
+import {imageUrl,names,palettes,useCoverCatalog,usePreview} from "../services/coverCatalog";
 import {useMapDates} from "../hooks/useMapDates";
 import coverClasses from "../services/landCoverClasses.json";
 
@@ -36,15 +37,17 @@ export default function Explorer() {
   const { data } = useData();
 
   const params=new URLSearchParams(location.search);
-  const coverYears=[2007,2008,2009,2010,2011,2012,2013,2014,2022];
-  const requestedYear=Number(params.get("year"));
-  const [coverYear,setCoverYear]=useState(coverYears.includes(requestedYear)?requestedYear:2022);
-  const [referenceField, setReferenceField] = useState<string|undefined>(params.get("factor")??undefined);
-  const [mapDate,setMapDate]=useState(params.get("date")??"");
+  const [enabled,setEnabled]=useState<string[]>(params.get("factor")?[params.get("factor")!]:[]);
+  const referenceField=enabled.at(-1);
+  const [dates,setDates]=useState<Record<string,string>>({[params.get("factor")??""]:params.get("date")??""});
   const mapDates=useMapDates();
-  const dynamic=referenceField ? mapDates[referenceField] : undefined;
-  const day=mapDate || Object.keys(dynamic??{}).sort().at(-1) || "";
-  const mapMeta=dynamic?.[day];
+  const dateFor=(key:string)=>dates[key]||Object.keys(mapDates[key]??{}).sort().at(-1)||"";
+  const dynamic=referenceField?mapDates[referenceField]:undefined;
+  const mapMeta=referenceField?dynamic?.[dateFor(referenceField)]:undefined;
+  const {years,errors:coverErrors}=useCoverCatalog();
+  const product=years.dynamic.length?"dynamic":"glc";
+  const latest=years[product].at(-1);
+  const cover=usePreview(product,enabled.includes("cover")?latest:undefined,"Whole Malaysia");
   const [national, setNational] = useState(!isDemo);
   const [viewport, setViewport] = useState<MapViewport | null>(null);
   const [nationalCell, setNationalCell] = useState<StaticAssessment["features"][number] | null>(null);
@@ -56,11 +59,12 @@ export default function Explorer() {
     [place, setPlace] = useState(places[0]),
     [selection, setSelection] = useState<Selection | null>(null),
     [search, setSearch] = useState("");
-  const [environmentOpacity,setEnvironmentOpacity]=useState(.85);
+  const [opacities,setOpacities]=useState<Record<string,number>>({});
+  const slider=(key:string,label:string)=><label className="range-label">Opacity <span>{Math.round((opacities[key]??(key==="inventory"?1:.85))*100)}%</span><input aria-label={label+" opacity"} type="range" min="0" max="1" step=".05" value={opacities[key]??(key==="inventory"?1:.85)} onChange={e=>setOpacities({...opacities,[key]:Number(e.target.value)})}/></label>;
   const dynamicNames:Record<string,string>={rainfall:"Rainfall",moisture:"Surface soil moisture",runoff:"Surface runoff"};
   const available=isDemo?[]:[...environmentLayers,...Object.keys(mapDates).map(key=>({
     key,name:dynamicNames[key],group:"Dynamic conditions",range:"0–"+(mapMeta?.maximum??"")+"+",unit:mapMeta?.unit??"",
-    source:[mapMeta?.source,day+" UTC",...(mapMeta?.status??[])].filter(Boolean).join(" · "),
+    source:[mapMeta?.source,dateFor(key)+" UTC",...(mapMeta?.status??[])].filter(Boolean).join(" · "),
     colors:mapMeta?.colors.join(",")??"",description:"Daily regional grid at approximately 10 km. Darker colours indicate higher values."
   }))];
   const chosen=available.find(l=>l.key===referenceField);
@@ -173,7 +177,14 @@ export default function Explorer() {
             onSelect={setSelection}
             assessment={showsAssessment ? assessment : null}
             onViewport={setViewport}
-            environmentalField={dynamic?(mapMeta?referenceField+"-"+day:undefined):!chosen?undefined:referenceField==="cover"?"cover-"+coverYear:referenceField} environmentalOpacity={environmentOpacity}
+            inventoryOpacity={opacities.inventory??1}
+            environmentalLayers={enabled.flatMap(key=>{
+              if(!available.some(l=>l.key===key))return [];
+              const opacity=opacities[key]??.85;
+              if(key==="cover")return cover?.meta&&latest?[{field:key,opacity,image:imageUrl(product,latest,"Whole Malaysia"),coordinates:cover.meta.coordinates}]:[];
+              if(mapDates[key]&&!mapDates[key][dateFor(key)])return [];
+              return [{field:mapDates[key]?key+"-"+dateFor(key):key,opacity}];
+            })}
           />
           {panel && (
             <aside className="layer-panel">
@@ -203,7 +214,7 @@ export default function Explorer() {
                 />
                 {isDemo ? "Synthetic patches" : "Malaysia susceptibility"}
               </label>
-              <label className="range-label">
+              {(isDemo?zones:national)&&<label className="range-label">
                 Opacity <span>{Math.round(opacity * 100)}%</span>
                 <input
                   aria-label="Susceptibility opacity"
@@ -215,7 +226,7 @@ export default function Explorer() {
                   value={opacity}
                   onChange={(e) => setOpacity(+e.target.value)}
                 />
-              </label>
+              </label>}
               <h4>Historical landslides</h4>
               <label className="check-row">
                 <input
@@ -225,12 +236,11 @@ export default function Explorer() {
                 />
                 {isDemo ? "Demonstration records" : "Malaysia inventory (historical candidates)"}
               </label>
+              {records&&slider("inventory","Inventory")}
               {available.length>0 && <h4>Environmental overlays</h4>}
-              {[...new Set(available.map(l=>l.group))].map(group=><details key={group}><summary>{group}</summary>{available.filter(l=>l.group===group).map(l=><label key={l.key} className="check-row"><input type="checkbox" checked={referenceField===l.key} onChange={e=>{setReferenceField(e.target.checked?l.key:undefined);setSelection(null)}}/>{l.name}</label>)}</details>)}
-              {dynamic && <label>Observation date (UTC) <input type="date" value={day} onChange={e=>setMapDate(e.target.value)}/></label>}
-              {chosen?.key==="cover" && <label>Reference year <select value={coverYear} onChange={e=>setCoverYear(Number(e.target.value))}>{coverYears.map(year=><option key={year}>{year}</option>)}</select></label>}
-              {chosen && <><label className="range-label">Overlay opacity <input type="range" min="0" max="1" step=".05" value={environmentOpacity} onChange={e=>setEnvironmentOpacity(+e.target.value)}/></label>
-              </>}
+              {[...new Set(available.map(l=>l.group))].map(group=><details key={group} open={available.some(l=>l.group===group&&enabled.includes(l.key))||undefined}><summary>{group}</summary>{available.filter(l=>l.group===group).map(l=><div key={l.key}>
+                <label className="check-row"><input type="checkbox" checked={enabled.includes(l.key)} onChange={e=>{setEnabled(e.target.checked?[...enabled,l.key]:enabled.filter(k=>k!==l.key));setSelection(null)}}/>{l.name}</label>
+                {enabled.includes(l.key)&&<>{slider(l.key,l.name)}{mapDates[l.key]&&<label>Observation date (UTC)<input type="date" value={dateFor(l.key)} onChange={e=>setDates({...dates,[l.key]:e.target.value})}/></label>}</>}</div>)}</details>)}
             </aside>
           )}
           {selection && (
@@ -265,8 +275,8 @@ export default function Explorer() {
             </aside>
           )}
           {chosen && <details key={chosen.key} open className="environment-legend"><summary>{chosen.group} · {chosen.name}</summary>
-            {dynamic && !mapMeta?<p>No spatial export for this UTC day.</p>:<>{chosen.key==="cover"?<details><summary>Class colours</summary>{coverClasses.map(c=><div key={c.code} className="cover-class"><i style={{background:c.color}}/>{c.code} · {c.name}</div>)}</details>:<><div className="layer-gradient" style={{background:"linear-gradient(to right,"+chosen.colors+")"}}/>
-            <strong>{chosen.range} {chosen.unit}</strong></>}<p>{chosen.description}</p><small>{chosen.source}{chosen.key==="cover" && " · "+coverYear}</small></>}
+            {dynamic && !mapMeta?<p>No spatial export for this UTC day.</p>:<>{chosen.key==="cover"?<details><summary>Class colours</summary>{palettes[product].map(c=><div key={c.code} className="cover-class"><i style={{background:c.color}}/>{c.code} · {c.name}</div>)}</details>:<><div className="layer-gradient" style={{background:"linear-gradient(to right,"+chosen.colors+")"}}/>
+            <strong>{chosen.range} {chosen.unit}</strong></>}{chosen.key==="cover"?<><p>Latest available land cover provides context for the surrounding terrain. <Link to="/analytics?factor=cover">Compare years in Environmental Analytics.</Link></p><small>{latest?names[product]+" · "+latest.year+(latest.ytd?" year to date through "+latest.through:" annual reference"):"Checking processed maps…"}</small>{(cover?.error||coverErrors.dynamic)&&<p>{cover?.error||coverErrors.dynamic}</p>}</>:<><p>{chosen.description}</p><small>{chosen.source}</small></>}</>}
           </details>}
         </div>
         <div className="map-legend">

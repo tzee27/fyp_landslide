@@ -30,8 +30,8 @@ interface Props {
   assessment?: StaticAssessment | null;
   onViewport?: (viewport: MapViewport) => void;
 
-  environmentalField?: string;
-  environmentalOpacity?: number;
+  environmentalLayers?: {field:string;opacity:number;image?:string;coordinates?:[[number,number],[number,number],[number,number],[number,number]]}[];
+  inventoryOpacity?:number;
 }
 const tiles: Record<string, { url: string; attribution: string }> = {
   Dark: {
@@ -64,8 +64,8 @@ export default function TerrainMap({
   assessment,
   onViewport,
 
-  environmentalField,
-  environmentalOpacity = .85,
+  environmentalLayers,
+  inventoryOpacity=1,
 }: Props) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<MapInstance | null>(null);
@@ -286,42 +286,49 @@ export default function TerrainMap({
       m.remove();
     };
   }, []);
-  useEffect(() => {
-    const m=map.current;
-    if (!ready || !m || !environmentalField) return;
-    const lineColors:Record<string,string>={roads:"#985a41",rivers:"#3e7398",faults:"#923f4d"};
-    if(environmentalField==="geology" || environmentalField in lineColors){
-      const id="environment-vector";
-      m.addSource(id,{type:"geojson",data:import.meta.env.BASE_URL+"data/"+environmentalField+".geojson"});
-      if(environmentalField==="geology"){
-        m.addLayer({id,type:"fill",source:id,paint:{"fill-color":["match",["get","class"],"Geological Lithodemic Unit","#9780aa","#d1a26d"],"fill-outline-color":"#735e55"}},"clusters");
-      }else{
-        m.addLayer({id,type:"line",source:id,paint:{"line-color":lineColors[environmentalField],"line-width":1.4}},"clusters");
-      }
-      return ()=>{
-        if(map.current?.getLayer(id)) m.removeLayer(id);
-        if(map.current?.getSource(id)) m.removeSource(id);
-      };
-    }
-    for (const [region,west,east] of [["west",99,105],["east",109,120]] as const) {
-      const id="environment-"+region;
-      m.addSource(id,{type:"image",url:import.meta.env.BASE_URL+"data/"+environmentalField+"-"+region+".png",coordinates:[[west,8],[east,8],[east,0],[west,0]]});
-      m.addLayer({id,type:"raster",source:id,paint:{"raster-resampling":/^(cover|rainfall|runoff|moisture)-/.test(environmentalField)?"nearest":"linear"}},"clusters");
-    }
-    return ()=>{
-      for (const id of ["environment-west","environment-east"]) {
-        if(map.current?.getLayer(id)) m.removeLayer(id);
-        if(map.current?.getSource(id)) m.removeSource(id);
-      }
-    };
-  },[ready,environmentalField]);
+  const displayed=useRef(new Map<string,string>());
   useEffect(()=>{
-    const vector=map.current?.getLayer("environment-vector");
-    if(vector) map.current?.setPaintProperty("environment-vector",vector.type==="fill"?"fill-opacity":"line-opacity",environmentalOpacity);
-    for (const id of ["environment-west","environment-east"]) {
-      if(map.current?.getLayer(id)) map.current.setPaintProperty(id,"raster-opacity",environmentalOpacity);
+    const m=map.current;
+    if(!ready||!m)return;
+    const active=new Set<string>();
+    for(const layer of environmentalLayers??[]){
+      const field=layer.field;
+      const line=field==="roads"||field==="rivers";
+      const parts=layer.image||line?[""]:["west","east"];
+      for(const part of parts){
+        const id="environment-"+field+"-"+part;
+        active.add(id);
+        const url=layer.image??import.meta.env.BASE_URL+"data/"+field+(line?".geojson":"-"+part+".png");
+        if(displayed.current.get(id)!==url&&m.getLayer(id)){m.removeLayer(id);m.removeSource(id)}
+        if(!m.getLayer(id)){
+          if(line){
+            m.addSource(id,{type:"geojson",data:url});
+            m.addLayer({id,type:"line",source:id,paint:{"line-color":field==="roads"?"#985a41":"#3e7398","line-width":1.4}},"clusters");
+          }else{
+            const [west,east]=part==="west"?[99,105]:[109,120];
+            m.addSource(id,{type:"image",url,coordinates:layer.coordinates??[[west,8],[east,8],[east,0],[west,0]]});
+            m.addLayer({id,type:"raster",source:id,paint:{"raster-resampling":/^(cover|rainfall|runoff|moisture)/.test(field)?"nearest":"linear"}},"clusters");
+          }
+          displayed.current.set(id,url);
+        }
+        m.setPaintProperty(id,line?"line-opacity":"raster-opacity",layer.opacity);
+      }
     }
-  },[ready,environmentalOpacity,environmentalField]);
+    for(const id of displayed.current.keys())if(!active.has(id)){
+      if(m.getLayer(id))m.removeLayer(id);
+      if(m.getSource(id))m.removeSource(id);
+      displayed.current.delete(id);
+    }
+  },[ready,environmentalLayers]);
+  useEffect(()=>{
+    const m=map.current;
+    if(!ready||!m)return;
+    for(const id of ["points","areas","clusters"]){
+      m.setPaintProperty(id,"circle-opacity",inventoryOpacity*(id==="areas"?.12:1));
+      m.setPaintProperty(id,"circle-stroke-opacity",inventoryOpacity);
+    }
+    m.setPaintProperty("cluster-counts","icon-opacity",inventoryOpacity);
+  },[ready,inventoryOpacity]);
   useEffect(() => {
     if (!ready || !map.current) return;
     (map.current.getSource("static-assessment") as maplibregl.GeoJSONSource).setData(
@@ -351,6 +358,8 @@ export default function TerrainMap({
       m.setLayoutProperty(id, "visibility", showZones ? "visible" : "none"),
     );
     m.setPaintProperty("zones", "fill-opacity", opacity);
+    m.setPaintProperty("zone-lines","line-opacity",opacity);
+    m.setPaintProperty("static-assessment-outline","line-opacity",opacity);
     m.setPaintProperty("static-assessment-fill", "fill-opacity", [
       "match", ["get", "displayLevel"], "Unscored", opacity * (0.14 / 0.65), opacity,
     ]);
